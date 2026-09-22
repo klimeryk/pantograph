@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type MessageView, StreamEventName, type SyncStateView } from '@pantograph/shared';
 import { Hono } from 'hono';
@@ -10,14 +11,22 @@ import {
   FAKE_BACKEND_PORT,
   FAKE_CHANNEL_KEY,
   FAKE_SECOND_CHANNEL_KEY,
+  FAKE_STICKER_JSON_BASE_URL,
   fakeChannelClosePath,
   fakeChannelEventsPath,
+  fakeStickerJsonPath,
 } from './fakeBackendConfig.ts';
 
 const FRONTEND_DIST_PATH = path.resolve(import.meta.dirname, '../frontend/dist');
+const LOTTIE_STICKER_FIXTURE_PATH = path.resolve(
+  import.meta.dirname,
+  'fixtures/lottieSticker.json',
+);
 const KEY_ROUTE_PARAMETER = 'key';
+const STICKER_ROUTE_PARAMETER = 'sticker';
 const NO_CONTENT_STATUS = 204;
 const NOT_FOUND_STATUS = 404;
+const JSON_CONTENT_TYPE = 'application/json';
 
 export type FakeEvent =
   | { name: typeof StreamEventName.MessageCreated; payload: MessageView }
@@ -84,6 +93,11 @@ app.post(fakeChannelClosePath(`:${KEY_ROUTE_PARAMETER}`), (context) => {
   hubsByKey.delete(key);
   return context.body(null, NO_CONTENT_STATUS);
 });
+app.get(fakeStickerJsonPath(`:${STICKER_ROUTE_PARAMETER}`), async (context) => {
+  const animation = await readFile(LOTTIE_STICKER_FIXTURE_PATH, 'utf8');
+  context.header('Content-Type', JSON_CONTENT_TYPE);
+  return context.body(animation);
+});
 app.route(
   '/',
   createHttpApp({
@@ -94,6 +108,7 @@ app.route(
     totalViewers,
     logger,
     frontendDistPath: FRONTEND_DIST_PATH,
+    stickerJsonBaseUrl: FAKE_STICKER_JSON_BASE_URL,
     getHealthReport: () => ({
       status: 'ok',
       discord: { connected: true, gatewayPingMs: 0 },

@@ -1,3 +1,4 @@
+import type { MentionNames, MentionsView } from '@pantograph/shared';
 import { parse } from 'discord-markdown-parser';
 
 const NodeType = {
@@ -60,7 +61,7 @@ export type DiscordMarkdownNode =
   | { type: typeof NodeType.SlashCommand; fullName: string; id: string }
   | { type: typeof NodeType.GuildNavigation; id: string; navigation: string };
 
-export type RenderOptions = { extended: boolean };
+export type RenderOptions = { extended: boolean; mentions: MentionsView };
 
 const BLOCK_NODE_TYPES: ReadonlySet<string> = new Set([
   NodeType.CodeBlock,
@@ -118,10 +119,13 @@ const STATIC_EMOJI_EXTENSION = 'webp';
 const MENTION_CLASS = 'rounded bg-indigo-500/30 px-1 text-indigo-200';
 const USER_MENTION_PREFIX = '@';
 const CHANNEL_MENTION_PREFIX = '#';
-const ROLE_MENTION_PREFIX = '@&';
+const ROLE_MENTION_PREFIX = '@';
 const SLASH_COMMAND_PREFIX = '/';
 const EVERYONE_MENTION = '@everyone';
 const HERE_MENTION = '@here';
+const UNKNOWN_USER_NAME = 'unknown-user';
+const UNKNOWN_ROLE_NAME = 'unknown-role';
+const UNKNOWN_CHANNEL_NAME = 'unknown-channel';
 
 const MILLISECONDS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
@@ -176,23 +180,23 @@ const TIMESTAMP_CLASS = 'rounded bg-neutral-800 px-1';
 
 export function renderDiscordMarkdown(content: string, options: RenderOptions): DocumentFragment {
   const nodes = parse(content, options.extended ? 'extended' : 'normal') as DiscordMarkdownNode[];
-  return renderNodes(nodes);
+  return renderNodes(nodes, options.mentions);
 }
 
-function renderNodes(nodes: DiscordMarkdownNode[]): DocumentFragment {
+function renderNodes(nodes: DiscordMarkdownNode[], mentions: MentionsView): DocumentFragment {
   const fragment = document.createDocumentFragment();
   let previousWasBlock = false;
   for (const node of nodes) {
     const isLineBreak = node.type === NodeType.LineBreak || node.type === NodeType.Newline;
     if (!(previousWasBlock && isLineBreak)) {
-      fragment.append(renderNode(node));
+      fragment.append(renderNode(node, mentions));
     }
     previousWasBlock = BLOCK_NODE_TYPES.has(node.type);
   }
   return fragment;
 }
 
-function renderNode(node: DiscordMarkdownNode): Node {
+function renderNode(node: DiscordMarkdownNode, mentions: MentionsView): Node {
   switch (node.type) {
     case NodeType.Text:
       return document.createTextNode(node.content);
@@ -206,20 +210,20 @@ function renderNode(node: DiscordMarkdownNode): Node {
     case NodeType.CodeBlock:
       return createCodeBlock(node.lang, node.content);
     case NodeType.Heading:
-      return createHeading(node.level, node.content);
+      return createHeading(node.level, node.content, mentions);
     case NodeType.Spoiler:
-      return createSpoiler(node.content);
+      return createSpoiler(node.content, mentions);
     case NodeType.Strong:
     case NodeType.Emphasis:
     case NodeType.Underline:
     case NodeType.Strikethrough:
     case NodeType.Subtext:
     case NodeType.BlockQuote:
-      return createContainer(node.type, node.content);
+      return createContainer(node.type, node.content, mentions);
     case NodeType.Url:
     case NodeType.Autolink:
     case NodeType.Link:
-      return createLink(node.target, node.content);
+      return createLink(node.target, node.content, mentions);
     case NodeType.Emoji:
       return createCustomEmoji(node.id, node.name, node.animated);
     case NodeType.Timestamp:
@@ -229,27 +233,37 @@ function renderNode(node: DiscordMarkdownNode): Node {
     case NodeType.Here:
       return createMention(HERE_MENTION);
     case NodeType.User:
-      return createMention(`${USER_MENTION_PREFIX}${node.id}`);
+      return createMention(
+        `${USER_MENTION_PREFIX}${nameFor(mentions.users, node.id, UNKNOWN_USER_NAME)}`,
+      );
     case NodeType.Channel:
-      return createMention(`${CHANNEL_MENTION_PREFIX}${node.id}`);
+      return createMention(
+        `${CHANNEL_MENTION_PREFIX}${nameFor(mentions.channels, node.id, UNKNOWN_CHANNEL_NAME)}`,
+      );
     case NodeType.Role:
-      return createMention(`${ROLE_MENTION_PREFIX}${node.id}`);
+      return createMention(
+        `${ROLE_MENTION_PREFIX}${nameFor(mentions.roles, node.id, UNKNOWN_ROLE_NAME)}`,
+      );
     case NodeType.SlashCommand:
       return createMention(`${SLASH_COMMAND_PREFIX}${node.fullName}`);
     case NodeType.GuildNavigation:
       return createMention(`${CHANNEL_MENTION_PREFIX}${node.navigation}`);
     default:
-      return renderUnknownNode(node);
+      return renderUnknownNode(node, mentions);
   }
 }
 
-function renderUnknownNode(node: never): Node {
+function nameFor(names: MentionNames, id: string, fallback: string): string {
+  return names[id] ?? fallback;
+}
+
+function renderUnknownNode(node: never, mentions: MentionsView): Node {
   const candidate: { content?: unknown } = node;
   if (typeof candidate.content === 'string') {
     return document.createTextNode(candidate.content);
   }
   if (Array.isArray(candidate.content)) {
-    return renderNodes(candidate.content as DiscordMarkdownNode[]);
+    return renderNodes(candidate.content as DiscordMarkdownNode[], mentions);
   }
   return document.createDocumentFragment();
 }
@@ -267,17 +281,25 @@ function createElement<TagName extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-function createContainer(type: InlineContainerType, children: DiscordMarkdownNode[]): HTMLElement {
+function createContainer(
+  type: InlineContainerType,
+  children: DiscordMarkdownNode[],
+  mentions: MentionsView,
+): HTMLElement {
   return createElement(
     INLINE_CONTAINER_TAGS[type],
     INLINE_CONTAINER_CLASSES[type] ?? null,
-    renderNodes(children),
+    renderNodes(children, mentions),
   );
 }
 
-function createHeading(level: number, children: DiscordMarkdownNode[]): HTMLElement {
+function createHeading(
+  level: number,
+  children: DiscordMarkdownNode[],
+  mentions: MentionsView,
+): HTMLElement {
   const style = HEADING_STYLES_BY_LEVEL.get(level) ?? FALLBACK_HEADING_STYLE;
-  return createElement(style.tag, style.className, renderNodes(children));
+  return createElement(style.tag, style.className, renderNodes(children, mentions));
 }
 
 function createCodeBlock(language: string, code: string): HTMLPreElement {
@@ -291,8 +313,8 @@ function createCodeBlock(language: string, code: string): HTMLPreElement {
   return pre;
 }
 
-function createSpoiler(children: DiscordMarkdownNode[]): HTMLSpanElement {
-  const spoiler = createElement('span', SPOILER_HIDDEN_CLASS, renderNodes(children));
+function createSpoiler(children: DiscordMarkdownNode[], mentions: MentionsView): HTMLSpanElement {
+  const spoiler = createElement('span', SPOILER_HIDDEN_CLASS, renderNodes(children, mentions));
   spoiler.setAttribute(SPOILER_ATTRIBUTE, SPOILER_HIDDEN_VALUE);
   spoiler.setAttribute('role', 'button');
   spoiler.setAttribute('aria-label', SPOILER_LABEL);
@@ -314,12 +336,12 @@ function createSpoiler(children: DiscordMarkdownNode[]): HTMLSpanElement {
   return spoiler;
 }
 
-function createLink(target: string, children: DiscordMarkdownNode[]): Node {
+function createLink(target: string, children: DiscordMarkdownNode[], mentions: MentionsView): Node {
   const href = toSafeHref(target);
   if (href === null) {
-    return renderNodes(children);
+    return renderNodes(children, mentions);
   }
-  const link = createElement('a', LINK_CLASS, renderNodes(children));
+  const link = createElement('a', LINK_CLASS, renderNodes(children, mentions));
   link.href = href;
   link.target = '_blank';
   link.rel = 'noopener noreferrer';

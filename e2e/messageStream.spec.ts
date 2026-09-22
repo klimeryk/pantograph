@@ -1,8 +1,15 @@
-import { channelPagePath, type MessageView, StreamEventName } from '@pantograph/shared';
+import {
+  channelPagePath,
+  type MessageView,
+  StickerKind,
+  StreamEventName,
+} from '@pantograph/shared';
 import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
 import type { FakeEvent } from './fakeBackend.ts';
 import {
   FAKE_CHANNEL_KEY,
+  FAKE_IMAGE_STICKER_ID,
+  FAKE_LOTTIE_STICKER_ID,
   FAKE_SECOND_CHANNEL_KEY,
   FAKE_UNKNOWN_CHANNEL_KEY,
   fakeChannelClosePath,
@@ -11,6 +18,11 @@ import {
 
 const NO_CONTENT_STATUS = 204;
 const REVOCATION_NOTICE_TIMEOUT_MS = 15_000;
+const MENTIONED_USER_ID = '867465548148768840';
+const MENTIONED_CHANNEL_ID = '1551732426290626634';
+const CUSTOM_EMOJI_ID = '1552081214045822976';
+const TRANSPARENT_PIXEL_URL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const RICH_MESSAGE = [
   'And just to be on the safe side, one more, this time ~~longer~~.',
   '`And` __maybe__ with some **rich** *formatting*? ||secret||',
@@ -30,11 +42,12 @@ function buildMessage(overrides: Partial<MessageView> & Pick<MessageView, 'id'>)
       isBot: false,
     },
     content: 'hello from discord',
-    cleanContent: 'hello from discord',
+    mentions: { users: {}, roles: {}, channels: {} },
     createdAt: new Date().toISOString(),
     editedAt: null,
     replyToMessageId: null,
     attachments: [],
+    stickers: [],
     ...overrides,
   };
 }
@@ -61,7 +74,7 @@ test('shows, edits and removes messages as they stream in', async ({ page, reque
   const messageId = `${Date.now()}`;
   await emit(request, FAKE_CHANNEL_KEY, {
     name: StreamEventName.MessageCreated,
-    payload: buildMessage({ id: messageId, cleanContent: 'first version' }),
+    payload: buildMessage({ id: messageId, content: 'first version' }),
   });
   const article = messageArticle(page, messageId);
   await expect(article).toBeVisible();
@@ -73,7 +86,7 @@ test('shows, edits and removes messages as they stream in', async ({ page, reque
     name: StreamEventName.MessageUpdated,
     payload: buildMessage({
       id: messageId,
-      cleanContent: 'second version',
+      content: 'second version',
       editedAt: new Date().toISOString(),
     }),
   });
@@ -99,7 +112,7 @@ test('renders Discord formatting instead of raw markers', async ({ page, request
   const messageId = `${Date.now()}`;
   await emit(request, FAKE_CHANNEL_KEY, {
     name: StreamEventName.MessageCreated,
-    payload: buildMessage({ id: messageId, cleanContent: RICH_MESSAGE }),
+    payload: buildMessage({ id: messageId, content: RICH_MESSAGE }),
   });
   const content = messageArticle(page, messageId).locator('[data-content]');
   await expect(content.locator('s')).toHaveText('longer');
@@ -116,6 +129,67 @@ test('renders Discord formatting instead of raw markers', async ({ page, request
   await spoiler.click();
   await expect(spoiler).toHaveAttribute('data-spoiler', 'revealed');
   await expect(spoiler).toHaveText('secret');
+});
+
+test('renders custom emoji and mention names', async ({ page, request }) => {
+  await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
+  await expect(page.locator('[data-connection-state]')).toHaveText('Live');
+
+  const messageId = `${Date.now()}`;
+  await emit(request, FAKE_CHANNEL_KEY, {
+    name: StreamEventName.MessageCreated,
+    payload: buildMessage({
+      id: messageId,
+      content: `<:blobaww:${CUSTOM_EMOJI_ID}> hi <@${MENTIONED_USER_ID}> in <#${MENTIONED_CHANNEL_ID}>`,
+      mentions: {
+        users: { [MENTIONED_USER_ID]: 'klimeryk' },
+        roles: {},
+        channels: { [MENTIONED_CHANNEL_ID]: 'general' },
+      },
+    }),
+  });
+
+  const content = messageArticle(page, messageId).locator('[data-content]');
+  const emoji = content.locator('img');
+  await expect(emoji).toHaveAttribute('alt', ':blobaww:');
+  await expect(emoji).toHaveAttribute('src', new RegExp(`/emojis/${CUSTOM_EMOJI_ID}\\.`));
+  await expect(content).toContainText('@klimeryk');
+  await expect(content).toContainText('#general');
+  await expect(content).not.toContainText(MENTIONED_USER_ID);
+});
+
+test('renders image and animated stickers', async ({ page, request }) => {
+  await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
+  await expect(page.locator('[data-connection-state]')).toHaveText('Live');
+
+  const messageId = `${Date.now()}`;
+  await emit(request, FAKE_CHANNEL_KEY, {
+    name: StreamEventName.MessageCreated,
+    payload: buildMessage({
+      id: messageId,
+      content: '',
+      stickers: [
+        {
+          id: FAKE_IMAGE_STICKER_ID,
+          name: 'waving',
+          kind: StickerKind.Image,
+          url: TRANSPARENT_PIXEL_URL,
+        },
+        { id: FAKE_LOTTIE_STICKER_ID, name: 'dancing', kind: StickerKind.Lottie },
+      ],
+    }),
+  });
+
+  const stickers = messageArticle(page, messageId).locator('[data-sticker]');
+  await expect(stickers).toHaveCount(2);
+  await expect(stickers.filter({ has: page.locator('img') })).toHaveAttribute(
+    'data-sticker',
+    'waving',
+  );
+  await expect(stickers.filter({ has: page.locator('svg') })).toHaveAttribute(
+    'data-sticker',
+    'dancing',
+  );
 });
 
 test('reflects the paused state pushed by the backend', async ({ page, request }) => {
@@ -143,7 +217,7 @@ test('keeps channels separate', async ({ page, request }) => {
   const firstChannelMessageId = `${Date.now()}`;
   await emit(request, FAKE_CHANNEL_KEY, {
     name: StreamEventName.MessageCreated,
-    payload: buildMessage({ id: firstChannelMessageId, cleanContent: 'only in fake-channel' }),
+    payload: buildMessage({ id: firstChannelMessageId, content: 'only in fake-channel' }),
   });
   const secondChannelMessageId = `${Date.now() + 1}`;
   await emit(request, FAKE_SECOND_CHANNEL_KEY, {
@@ -151,7 +225,7 @@ test('keeps channels separate', async ({ page, request }) => {
     payload: buildMessage({
       id: secondChannelMessageId,
       channelId: '2',
-      cleanContent: 'only in other-channel',
+      content: 'only in other-channel',
     }),
   });
   await expect(messageArticle(page, secondChannelMessageId)).toBeVisible();

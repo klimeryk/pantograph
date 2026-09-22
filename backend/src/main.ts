@@ -15,6 +15,7 @@ const EXIT_CODE_CONFIG_ERROR = 2;
 const EXIT_CODE_STARTUP_FAILED = 1;
 const EXIT_CODE_FATAL_DISCONNECT = 3;
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
+const STICKER_JSON_BASE_URL = 'https://cdn.discordapp.com/stickers/';
 
 async function main(): Promise<void> {
   const startedAt = new Date();
@@ -62,6 +63,7 @@ async function main(): Promise<void> {
     totalViewers: () => channels.totalViewers,
     logger,
     frontendDistPath: await resolveFrontendDistPath(config, logger),
+    stickerJsonBaseUrl: STICKER_JSON_BASE_URL,
     getHealthReport: bot.getHealthReport,
   });
   let server: Awaited<ReturnType<typeof startHttpServer>> | null = null;
