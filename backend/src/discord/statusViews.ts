@@ -4,7 +4,7 @@ import {
   channelMention,
   HeadingLevel,
   heading,
-  hyperlink,
+  hideLinkEmbed,
   inlineCode,
   SeparatorSpacingSize,
   subtext,
@@ -78,7 +78,7 @@ export function buildLinkNotice(
   extraLines: readonly string[],
 ): ContainerBuilder {
   return buildNotice(tone, title, [
-    `${channelMention(channelId)} is mirrored at ${hyperlink(link, link)}`,
+    `${channelMention(channelId)} is mirrored at ${mirrorLink(link)}`,
     ...extraLines,
     subtext(LINK_SHARING_HINT),
   ]);
@@ -166,6 +166,10 @@ export function buildIncidentView(
   ]);
 }
 
+function mirrorLink(link: string): string {
+  return hideLinkEmbed(link);
+}
+
 function describeChannel(channel: ChannelStatus): string {
   const state = channel.paused ? '⏸️ paused' : '▶️ running';
   const lastEvent = channel.lastEventAt
@@ -173,7 +177,7 @@ function describeChannel(channel: ChannelStatus): string {
     : 'none yet';
   return [
     `${bold(channelMention(channel.id))} · ${state}`,
-    `${bold('Link:')} ${hyperlink(channel.link, channel.link)}`,
+    `${bold('Link:')} ${mirrorLink(channel.link)}`,
     `${bold('Viewers:')} ${channel.viewers} · ${bold('Buffered:')} ${channel.buffered} · ${bold('Last event:')} ${lastEvent}`,
   ].join('\n');
 }
