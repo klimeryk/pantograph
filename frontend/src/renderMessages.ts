@@ -1,4 +1,5 @@
 import { type AttachmentView, compareSnowflakes, type MessageView } from '@pantograph/shared';
+import { renderDiscordMarkdown } from './discordMarkdown.ts';
 import { requireElement } from './dom.ts';
 import type { MessageStore, StoreChange } from './messageStore.ts';
 
@@ -96,7 +97,9 @@ export class MessageListRenderer {
     created.textContent = timeFormatter.format(new Date(message.createdAt));
 
     requireElement(item, '[data-edited]').hidden = message.editedAt === null;
-    requireElement(item, '[data-content]').textContent = message.cleanContent;
+    requireElement(item, '[data-content]').replaceChildren(
+      renderDiscordMarkdown(message.cleanContent, { extended: message.author.isBot }),
+    );
 
     const attachments = requireElement<HTMLUListElement>(item, '[data-attachments]');
     attachments.replaceChildren(...message.attachments.map(createAttachmentItem));

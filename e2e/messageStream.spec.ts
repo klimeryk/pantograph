@@ -11,6 +11,14 @@ import {
 
 const NO_CONTENT_STATUS = 204;
 const REVOCATION_NOTICE_TIMEOUT_MS = 15_000;
+const RICH_MESSAGE = [
+  'And just to be on the safe side, one more, this time ~~longer~~.',
+  '`And` __maybe__ with some **rich** *formatting*? ||secret||',
+  '',
+  'Or something with a quote (line starting with ">").',
+  '> quoted line',
+  '> second quoted line',
+].join('\n');
 
 function buildMessage(overrides: Partial<MessageView> & Pick<MessageView, 'id'>): MessageView {
   return {
@@ -82,6 +90,32 @@ test('shows, edits and removes messages as they stream in', async ({ page, reque
     payload: { ids: [messageId] },
   });
   await expect(messageArticle(page, messageId)).toHaveCount(0);
+});
+
+test('renders Discord formatting instead of raw markers', async ({ page, request }) => {
+  await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
+  await expect(page.locator('[data-connection-state]')).toHaveText('Live');
+
+  const messageId = `${Date.now()}`;
+  await emit(request, FAKE_CHANNEL_KEY, {
+    name: StreamEventName.MessageCreated,
+    payload: buildMessage({ id: messageId, cleanContent: RICH_MESSAGE }),
+  });
+  const content = messageArticle(page, messageId).locator('[data-content]');
+  await expect(content.locator('s')).toHaveText('longer');
+  await expect(content.locator('code')).toHaveText('And');
+  await expect(content.locator('u')).toHaveText('maybe');
+  await expect(content.locator('strong')).toHaveText('rich');
+  await expect(content.locator('em')).toHaveText('formatting');
+  await expect(content.locator('blockquote')).toContainText('quoted line');
+  await expect(content).not.toContainText('**');
+  await expect(content).not.toContainText('~~');
+
+  const spoiler = content.locator('[data-spoiler]');
+  await expect(spoiler).toHaveAttribute('data-spoiler', 'hidden');
+  await spoiler.click();
+  await expect(spoiler).toHaveAttribute('data-spoiler', 'revealed');
+  await expect(spoiler).toHaveText('secret');
 });
 
 test('reflects the paused state pushed by the backend', async ({ page, request }) => {
