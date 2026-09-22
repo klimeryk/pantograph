@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pantograph</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body class="flex h-full flex-col bg-neutral-950 text-neutral-100">
+    <header class="flex items-baseline justify-between gap-4 border-b border-neutral-800 px-4 py-3">
+      <h1 class="text-lg font-semibold" data-channel-name>Pantograph</h1>
+      <p class="text-sm text-neutral-400" role="status" data-connection-state hidden>Connecting…</p>
+    </header>
+    <main class="flex min-h-0 flex-1 flex-col">
+      <section class="px-4 py-6 text-sm text-neutral-400" data-landing hidden>
+        <p>Open a link shared by a server moderator to follow a channel.</p>
+      </section>
+      <section class="px-4 py-6 text-sm text-neutral-400" role="alert" data-unavailable hidden>
+        <p>This link is not active. Ask a server moderator for a new one.</p>
+      </section>
+      <section class="flex min-h-0 flex-1 flex-col" data-stream hidden>
+        <p
+          class="border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-200"
+          role="status"
+          data-paused-banner
+          hidden
+        >
+          Syncing is paused. New messages will appear once a moderator resumes it.
+        </p>
+        <p class="px-4 py-6 text-sm text-neutral-500" data-empty-state>No messages yet.</p>
+        <ol
+          class="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions text"
+          data-message-list
+        ></ol>
+      </section>
+    </main>
+    <template data-message-template>
+      <li>
+        <article class="flex gap-3" data-message-id>
+          <img class="mt-1 size-8 shrink-0 rounded-full bg-neutral-800" alt="" data-avatar />
+          <div class="min-w-0 flex-1">
+            <header class="flex flex-wrap items-baseline gap-x-2 text-sm">
+              <address class="font-semibold not-italic" data-author></address>
+              <time class="text-xs text-neutral-500" data-created></time>
+              <span class="text-xs text-neutral-500" data-edited hidden>(edited)</span>
+            </header>
+            <p class="whitespace-pre-wrap break-words" data-content></p>
+            <ul class="mt-2 flex flex-wrap gap-2" data-attachments></ul>
+          </div>
+        </article>
+      </li>
+    </template>
+  </body>
+</html>
