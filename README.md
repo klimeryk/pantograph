@@ -295,7 +295,8 @@ Depending on the long-terms plans for it, we could extend the test harness, but 
 #### Safe (but potentially limited) Discord Markdown parsing
 Using [discord-markdown-parser](https://github.com/ItzDerock/discord-markdown-parser) to parse the Discord-flavored Markdown into an AST tree to safely then render it on the frontend. The library itself is not _super_ well-maintained, plus we don't support all the possible craziness that Discord users can submit (see below, like embeds). But most things are supported, especially with the use case I had in mind (public "announcement"-like page).
 
-
+#### Channel URLs
+I went with an approach like for an unlisted video - you have the link, you can view it. Used a simple pattern to keep it short and still random. UUID would be too long. As noted in the future work below, depending on the use case we're aiming for, we could allow the users to specific either the prefix of the channel (to help distinguish one link from another) or even the whole currently random part. But that makes it easier to guess, so we should make sure that users are aware of that trade-off.
 
 ## Mind the gap: known limitations and future work
 
@@ -339,10 +340,12 @@ This is not the final stop for this project, there's many more stations it could
 | Emoji reactions | Medium | The non-privileged `GuildMessageReactions` intent, reaction add/remove events, `reactions` in `MessageView` and a chip row patched in place. Normally emojis are _super important_, but depending on the use case (an "announcement" page), it might be a "feature" to strip them when showing the messages publicly. Or can be a configuration flag. |
 | Browser notifications while the tab is in the background | Small | Ask for permission on the announcements (currently sound only) toggle, then show a `Notification` for arrivals while `document.hidden`, reusing the screen-reader text. With the tab closed it's a different story: service worker, Web Push and a subscription store, so more effort. |
 | Reply previews | Small to medium | Resolve the referenced message on the backend and send its author and an excerpt. |
+| Human-friendly URLs | Small to medium | Current URLs are random and can be hard to distinguish between one and another. We should give an option to either provide a human-friendly prefix to it or even remove the random part. Depends on the use case and how we want to use this. |
 | Embeds and link previews | Medium | Discord adds embeds through a later edit, so this needs the missed-partial-edits fix first. |
 | Load older messages | Medium | A paginated history endpoint backed by `messages.fetch({ before })`, plus keeping the scroll position when prepending. |
 | Typing indicator | Small to medium | Choo, choo, a new message is (probably) arriving! The `GuildMessageTyping` intent and a transient event that skips the replay log. |
 | Viewer count on the page | Small | Add the subscriber count to `sync.state`, throttled. |
 | Persistent history (Railway Postgres) | Medium to large | History survives restarts, and pagination and search become possible. |
+| Search engine indexing | Large | For a true public mirror, search engines should be able to find and index the channel. That goes against the unlisted links, so it has to be opt-in per channel: something like `/pantograph publish #channel`, which lists the channel in a `sitemap.xml` (a human-friendly URL would help here too). Unlisted channels should then send `X-Robots-Tag: noindex`. Crawlers can run JavaScript, but an SSE stream never finishes loading, so the server should render the recent messages as plain HTML and let the stream client take over from there. The renderer builds DOM nodes, so that means a string renderer or a server-side DOM. Indexing 50 messages isn't much of an archive either, so this needs persistent history and paginated pages. Also worth telling the channel's members that their messages will end up in search results, and deleted ones can stay there for a while. |
 | Horizontal scale | Large | Publish hub events to Redis and run stateless SSE relays (see [Scaling notes](#scaling-notes)). |
 
