@@ -17,6 +17,7 @@ wire. This one keeps contact with Discord instead: a bot listens to the channels
 small web server streams every new message, edit and deletion to anyone who has the link. No
 Discord account needed on the reading end.
 
+<img width="2880" height="1572" alt="Screenshot 2026-09-23 at 22-44-45 #announcements · Pantograph" src="https://github.com/user-attachments/assets/3dbfee63-f097-46a5-a7ba-39bc201cad88" />
 
 ## What it does
 
