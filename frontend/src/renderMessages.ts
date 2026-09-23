@@ -4,11 +4,10 @@ import {
   type MessageView,
   StickerKind,
   type StickerView,
-  stickerLottiePath,
 } from '@pantograph/shared';
-import type { AnimationItem } from 'lottie-web/build/player/lottie_light';
 import { renderDiscordMarkdown } from './discordMarkdown.ts';
 import { requireElement } from './dom.ts';
+import { LottieStickerPlayer } from './lottieStickers.ts';
 import type { MessageStore, StoreChange } from './messageStore.ts';
 import { prefersReducedMotion } from './motion.ts';
 
@@ -19,8 +18,6 @@ const SNOWFLAKE_BEFORE_ALL_OTHERS = '0';
 const STICKER_ATTRIBUTE = 'data-sticker';
 const STICKER_SIZE_CLASS = 'size-32';
 const STICKER_NAME_CLASS = 'rounded bg-neutral-800 px-1 text-sm text-neutral-400';
-const LOTTIE_RENDERER = 'svg';
-const LOTTIE_LOAD_FAILED_EVENT = 'data_failed';
 const MESSAGE_DAY_CLASS = 'text-neutral-500';
 const ARRIVAL_DURATION_MS = 700;
 const ARRIVAL_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)';
@@ -34,9 +31,6 @@ const DEPARTURE_KEYFRAMES: Keyframe[] = [
   { transform: 'none', opacity: 1 },
   { transform: 'translateX(-3rem)', opacity: 0 },
 ];
-
-const animationsByItem = new WeakMap<Element, AnimationItem[]>();
-const discardedItems = new WeakSet<Element>();
 
 const clockFormatter = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
@@ -56,6 +50,7 @@ export class MessageListRenderer {
   readonly #approaching: HTMLButtonElement;
   readonly #approachingCount: HTMLElement;
   readonly #store: MessageStore;
+  readonly #stickers: LottieStickerPlayer;
   #approachingMessages = 0;
 
   constructor(root: ParentNode, store: MessageStore) {
@@ -65,6 +60,7 @@ export class MessageListRenderer {
     this.#approaching = requireElement<HTMLButtonElement>(root, '[data-approaching]');
     this.#approachingCount = requireElement(root, '[data-approaching-count]');
     this.#store = store;
+    this.#stickers = new LottieStickerPlayer(this.#list);
     this.#list.addEventListener('scroll', () => {
       if (this.#isNearBottom()) {
         this.#clearApproaching();
@@ -109,7 +105,7 @@ export class MessageListRenderer {
 
   #renderAll(): void {
     for (const existing of this.#list.children) {
-      discardItem(existing);
+      this.#stickers.discard(existing);
     }
     this.#list.replaceChildren(
       ...this.#store.messagesOldestFirst.map((message) => this.#createItem(message)),
@@ -122,7 +118,7 @@ export class MessageListRenderer {
     if (item === null) {
       return;
     }
-    discardItem(item);
+    this.#stickers.discard(item);
     if (!animated || prefersReducedMotion()) {
       item.remove();
       return;
@@ -143,7 +139,7 @@ export class MessageListRenderer {
     const existing = this.#findItem(message.id);
     const item = this.#createItem(message);
     if (existing) {
-      discardItem(existing);
+      this.#stickers.discard(existing);
       existing.replaceWith(item);
       return null;
     }
@@ -191,7 +187,7 @@ export class MessageListRenderer {
 
     const stickers = requireElement<HTMLUListElement>(item, '[data-stickers]');
     stickers.replaceChildren(
-      ...message.stickers.map((sticker) => createStickerItem(item, sticker)),
+      ...message.stickers.map((sticker) => createStickerItem(this.#stickers, item, sticker)),
     );
     stickers.hidden = message.stickers.length === 0;
 
@@ -256,15 +252,11 @@ function createBotBadge(): HTMLSpanElement {
   return badge;
 }
 
-function discardItem(item: Element): void {
-  discardedItems.add(item);
-  for (const animation of animationsByItem.get(item) ?? []) {
-    animation.destroy();
-  }
-  animationsByItem.delete(item);
-}
-
-function createStickerItem(item: Element, sticker: StickerView): HTMLLIElement {
+function createStickerItem(
+  player: LottieStickerPlayer,
+  item: Element,
+  sticker: StickerView,
+): HTMLLIElement {
   const stickerItem = document.createElement('li');
   stickerItem.setAttribute(STICKER_ATTRIBUTE, sticker.name);
   if (sticker.kind === StickerKind.Image) {
@@ -274,7 +266,9 @@ function createStickerItem(item: Element, sticker: StickerView): HTMLLIElement {
   const container = document.createElement('div');
   container.className = STICKER_SIZE_CLASS;
   stickerItem.append(container);
-  void playLottieSticker(item, container, sticker.id, sticker.name);
+  player.mount(item, stickerItem, container, sticker.id, () =>
+    container.replaceWith(createStickerName(sticker.name)),
+  );
   return stickerItem;
 }
 
@@ -287,35 +281,6 @@ function createStickerImage(url: string, name: string): HTMLImageElement {
   image.loading = 'lazy';
   image.addEventListener('error', () => image.replaceWith(createStickerName(name)), { once: true });
   return image;
-}
-
-async function playLottieSticker(
-  item: Element,
-  container: HTMLElement,
-  stickerId: string,
-  name: string,
-): Promise<void> {
-  let lottie: typeof import('lottie-web/build/player/lottie_light').default;
-  try {
-    lottie = (await import('lottie-web/build/player/lottie_light')).default;
-  } catch {
-    container.replaceWith(createStickerName(name));
-    return;
-  }
-  if (discardedItems.has(item)) {
-    return;
-  }
-  const animation = lottie.loadAnimation({
-    container,
-    renderer: LOTTIE_RENDERER,
-    loop: true,
-    autoplay: true,
-    path: stickerLottiePath(stickerId),
-  });
-  animation.addEventListener(LOTTIE_LOAD_FAILED_EVENT, () =>
-    container.replaceWith(createStickerName(name)),
-  );
-  animationsByItem.set(item, [...(animationsByItem.get(item) ?? []), animation]);
 }
 
 function createStickerName(name: string): HTMLSpanElement {

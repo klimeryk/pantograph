@@ -22,6 +22,8 @@ const BOARD_HELD_AT_SIGNAL = 'HELD AT SIGNAL';
 const BOARD_CANCELLED = 'CANCELLED';
 const PLATFORM_NUMBER_PATTERN = /^\d{1,2}$/;
 const MESSAGES_TO_OVERFLOW_VIEWPORT = 40;
+const STICKER_PLAYING = 'playing';
+const STICKER_PAUSED = 'paused';
 const REVOCATION_NOTICE_TIMEOUT_MS = 15_000;
 const MENTIONED_USER_ID = '867465548148768840';
 const MENTIONED_CHANNEL_ID = '1551732426290626634';
@@ -196,10 +198,25 @@ test('renders image and animated stickers', async ({ page, request }) => {
     'data-sticker',
     'waving',
   );
-  await expect(stickers.filter({ has: page.locator('svg') })).toHaveAttribute(
-    'data-sticker',
-    'dancing',
-  );
+  const animated = stickers.filter({ has: page.locator('svg') });
+  await expect(animated).toHaveAttribute('data-sticker', 'dancing');
+  await expect(animated).toHaveAttribute('data-sticker-state', STICKER_PLAYING);
+
+  const firstFillerId = Number(messageId) + 1;
+  for (let offset = 0; offset < MESSAGES_TO_OVERFLOW_VIEWPORT; offset += 1) {
+    await emit(request, FAKE_CHANNEL_KEY, {
+      name: StreamEventName.MessageCreated,
+      payload: buildMessage({ id: `${firstFillerId + offset}`, content: `service ${offset}` }),
+    });
+  }
+  await expect(animated).not.toBeInViewport();
+  await expect(animated).toHaveAttribute('data-sticker-state', STICKER_PAUSED);
+
+  await page.locator('[data-message-list]').evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(animated).toBeInViewport();
+  await expect(animated).toHaveAttribute('data-sticker-state', STICKER_PLAYING);
 });
 
 test('reflects the paused state pushed by the backend', async ({ page, request }) => {

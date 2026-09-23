@@ -14,11 +14,13 @@ const SILENT_GAIN = 0.0001;
 const OSCILLATOR_TYPE: OscillatorType = 'sine';
 const RUNNING_STATE: AudioContextState = 'running';
 const CHIME_MIN_INTERVAL_MS = 2000;
+const NOTE_ENDED_EVENT = 'ended';
 
 export class ArrivalChime {
   #context: AudioContext | null = null;
   #enabled = readPreference() === Preference.On;
   #lastPlayedAt = Number.NEGATIVE_INFINITY;
+  #soundingNotes = 0;
 
   get enabled(): boolean {
     return this.#enabled;
@@ -61,8 +63,18 @@ export class ArrivalChime {
     }
     const startAt = context.currentTime;
     CHIME_NOTES_HZ.forEach((frequencyHz, index) => {
-      scheduleNote(context, frequencyHz, startAt + index * NOTE_SPACING_SECONDS);
+      this.#soundingNotes += 1;
+      scheduleNote(context, frequencyHz, startAt + index * NOTE_SPACING_SECONDS, () =>
+        this.#onNoteEnded(context),
+      );
     });
+  }
+
+  #onNoteEnded(context: AudioContext): void {
+    this.#soundingNotes -= 1;
+    if (this.#soundingNotes === 0) {
+      context.suspend().catch(() => undefined);
+    }
   }
 
   #ensureContext(): AudioContext | null {
@@ -77,7 +89,12 @@ export class ArrivalChime {
   }
 }
 
-function scheduleNote(context: AudioContext, frequencyHz: number, startAt: number): void {
+function scheduleNote(
+  context: AudioContext,
+  frequencyHz: number,
+  startAt: number,
+  onEnded: () => void,
+): void {
   const oscillator = context.createOscillator();
   oscillator.type = OSCILLATOR_TYPE;
   oscillator.frequency.value = frequencyHz;
@@ -86,6 +103,7 @@ function scheduleNote(context: AudioContext, frequencyHz: number, startAt: numbe
   gain.gain.linearRampToValueAtTime(PEAK_GAIN, startAt + ATTACK_SECONDS);
   gain.gain.exponentialRampToValueAtTime(SILENT_GAIN, startAt + NOTE_DURATION_SECONDS);
   oscillator.connect(gain).connect(context.destination);
+  oscillator.addEventListener(NOTE_ENDED_EVENT, onEnded, { once: true });
   oscillator.start(startAt);
   oscillator.stop(startAt + NOTE_DURATION_SECONDS);
 }
