@@ -1,4 +1,5 @@
 import {
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
   type ContainerBuilder,
   channelMention,
@@ -14,7 +15,9 @@ import {
   buildLinkNotice,
   buildNotice,
   buildStatusView,
+  FIRST_STATUS_PAGE,
   NoticeTone,
+  STATUS_PAGE_BUTTON_PREFIX,
   type StatusReport,
 } from '../statusViews.ts';
 import type { BulkResult, SyncController } from '../syncController.ts';
@@ -34,6 +37,9 @@ const Subcommand = {
 
 const CHANNEL_OPTION = 'channel';
 const REQUIRED_MEMBER_PERMISSION = PermissionFlagsBits.ManageGuild;
+const STATUS_PAGE_PATTERN = /^\d+$/;
+const SERVER_ONLY_NOTICE_LINES = ['This command only works inside a server.'];
+const NOT_ALLOWED_NOTICE_LINES = ['Pantograph commands need the Manage Server permission.'];
 
 export function buildPantographCommand(): SlashCommandSubcommandsOnlyBuilder {
   return new SlashCommandBuilder()
@@ -130,23 +136,56 @@ export async function handlePantographCommand(
   }
 }
 
+export function isStatusPageButton(customId: string): boolean {
+  return customId.startsWith(STATUS_PAGE_BUTTON_PREFIX);
+}
+
+export async function handleStatusPageButton(
+  interaction: ButtonInteraction,
+  context: CommandContext,
+): Promise<void> {
+  try {
+    const pageText = interaction.customId.slice(STATUS_PAGE_BUTTON_PREFIX.length);
+    const rejection = describeAccessRejection(interaction);
+    if (rejection !== null || !interaction.inCachedGuild() || !STATUS_PAGE_PATTERN.test(pageText)) {
+      await interaction.reply({
+        components: [rejection ?? buildNotice(NoticeTone.Error, 'Unknown page', [pageText])],
+        flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
+      });
+      return;
+    }
+    await interaction.update({
+      components: [
+        buildStatusView(context.getStatusReport(interaction.guildId, null), Number(pageText)),
+      ],
+      flags: [MessageFlags.IsComponentsV2],
+    });
+  } catch (error) {
+    context.logger.error({ error: describeError(error) }, 'Status page button failed');
+  }
+}
+
+function describeAccessRejection(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+): ContainerBuilder | null {
+  if (!interaction.inCachedGuild()) {
+    return buildNotice(NoticeTone.Error, 'Server only', SERVER_ONLY_NOTICE_LINES);
+  }
+  if (!interaction.memberPermissions.has(REQUIRED_MEMBER_PERMISSION)) {
+    return buildNotice(NoticeTone.Error, 'Not allowed', NOT_ALLOWED_NOTICE_LINES);
+  }
+  return null;
+}
+
 async function dispatchSubcommand(
   interaction: ChatInputCommandInteraction,
   context: CommandContext,
 ): Promise<void> {
-  if (!interaction.inCachedGuild()) {
+  const rejection = describeAccessRejection(interaction);
+  if (rejection !== null || !interaction.inCachedGuild()) {
     await respond(
       interaction,
-      buildNotice(NoticeTone.Error, 'Server only', ['This command only works inside a server.']),
-    );
-    return;
-  }
-  if (!interaction.memberPermissions.has(REQUIRED_MEMBER_PERMISSION)) {
-    await respond(
-      interaction,
-      buildNotice(NoticeTone.Error, 'Not allowed', [
-        'Pantograph commands need the Manage Server permission.',
-      ]),
+      rejection ?? buildNotice(NoticeTone.Error, 'Server only', SERVER_ONLY_NOTICE_LINES),
     );
     return;
   }
@@ -160,7 +199,7 @@ async function dispatchSubcommand(
     case Subcommand.Status: {
       await respond(
         interaction,
-        buildStatusView(context.getStatusReport(guildId, optionalChannelId)),
+        buildStatusView(context.getStatusReport(guildId, optionalChannelId), FIRST_STATUS_PAGE),
       );
       return;
     }

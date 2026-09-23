@@ -1,4 +1,7 @@
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   bold,
   ContainerBuilder,
   channelMention,
@@ -17,7 +20,12 @@ const ACCENT_COLOR_SUCCESS = 0x57f287;
 const ACCENT_COLOR_ERROR = 0xed4245;
 const ACCENT_COLOR_WARNING = 0xfee75c;
 const ACCENT_COLOR_INFO = 0x5865f2;
-const MAX_CHANNELS_IN_STATUS = 10;
+const CHANNELS_PER_STATUS_PAGE = 10;
+const PREVIOUS_PAGE_LABEL = '◀ Prev';
+const NEXT_PAGE_LABEL = 'Next ▶';
+
+export const FIRST_STATUS_PAGE = 0;
+export const STATUS_PAGE_BUTTON_PREFIX = 'pantograph:status:page:';
 
 export const NoticeTone = {
   Success: 'success',
@@ -84,7 +92,7 @@ export function buildLinkNotice(
   ]);
 }
 
-export function buildStatusView(report: StatusReport): ContainerBuilder {
+export function buildStatusView(report: StatusReport, requestedPage: number): ContainerBuilder {
   const notifyLine = report.notifyChannelId
     ? `${bold('Notices:')} ${channelMention(report.notifyChannelId)}`
     : `${bold('Notices:')} logs only · use ${inlineCode('/pantograph notify')}`;
@@ -108,20 +116,13 @@ export function buildStatusView(report: StatusReport): ContainerBuilder {
         text.setContent(`No channel is mirrored yet · use ${inlineCode('/pantograph watch')}`),
       );
   }
-  for (const channel of report.channels.slice(0, MAX_CHANNELS_IN_STATUS)) {
+  const pageCount = Math.max(1, Math.ceil(report.channels.length / CHANNELS_PER_STATUS_PAGE));
+  const page = Math.min(Math.max(requestedPage, FIRST_STATUS_PAGE), pageCount - 1);
+  const pageStart = page * CHANNELS_PER_STATUS_PAGE;
+  for (const channel of report.channels.slice(pageStart, pageStart + CHANNELS_PER_STATUS_PAGE)) {
     container
       .addSeparatorComponents((separator) => separator.setSpacing(SeparatorSpacingSize.Small))
       .addTextDisplayComponents((text) => text.setContent(describeChannel(channel)));
-  }
-  const hiddenCount = report.channels.length - MAX_CHANNELS_IN_STATUS;
-  if (hiddenCount > 0) {
-    container.addTextDisplayComponents((text) =>
-      text.setContent(
-        subtext(
-          `and ${hiddenCount} more · use ${inlineCode('/pantograph status channel:')} for one channel`,
-        ),
-      ),
-    );
   }
 
   if (report.openIncidents.length > 0) {
@@ -139,7 +140,33 @@ export function buildStatusView(report: StatusReport): ContainerBuilder {
         ),
       );
   }
+
+  if (pageCount > 1) {
+    container
+      .addSeparatorComponents((separator) => separator.setSpacing(SeparatorSpacingSize.Small))
+      .addTextDisplayComponents((text) =>
+        text.setContent(
+          subtext(`Page ${page + 1} of ${pageCount} · ${report.channels.length} channels`),
+        ),
+      )
+      .addActionRowComponents(buildPageButtons(page, pageCount));
+  }
   return container;
+}
+
+function buildPageButtons(page: number, pageCount: number): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${STATUS_PAGE_BUTTON_PREFIX}${page - 1}`)
+      .setLabel(PREVIOUS_PAGE_LABEL)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === FIRST_STATUS_PAGE),
+    new ButtonBuilder()
+      .setCustomId(`${STATUS_PAGE_BUTTON_PREFIX}${page + 1}`)
+      .setLabel(NEXT_PAGE_LABEL)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === pageCount - 1),
+  );
 }
 
 export function buildIncidentView(

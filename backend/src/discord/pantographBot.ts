@@ -1,7 +1,7 @@
 import type { HealthReport } from '@pantograph/shared';
 import { type Client, Events, OAuth2Scopes, PermissionFlagsBits } from 'discord.js';
 import { buildChannelLink } from '../channels/channelLink.ts';
-import type { WatchedChannels } from '../channels/watchedChannels.ts';
+import type { WatchedChannel, WatchedChannels } from '../channels/watchedChannels.ts';
 import type { BackendConfig } from '../config.ts';
 import type { Logger } from '../logging.ts';
 import type { BotStateStore } from '../state/botState.ts';
@@ -9,6 +9,8 @@ import { MILLISECONDS_PER_MINUTE, MILLISECONDS_PER_SECOND, SECONDS_PER_MINUTE } 
 import {
   buildPantographCommand,
   handlePantographCommand,
+  handleStatusPageButton,
+  isStatusPageButton,
   PANTOGRAPH_COMMAND_NAME,
 } from './commands/pantographCommand.ts';
 import { ensureCommandsRegistered } from './commands/registerCommands.ts';
@@ -62,6 +64,7 @@ export function attachPantographBot(dependencies: PantographBotDependencies): Pa
     channels: channels
       .inGuild(guildId)
       .filter((watched) => channelId === null || watched.record.channelId === channelId)
+      .toSorted(compareByChannelName)
       .map((watched) => ({
         id: watched.record.channelId,
         name: watched.channelName,
@@ -145,13 +148,17 @@ export function attachPantographBot(dependencies: PantographBotDependencies): Pa
   });
 
   client.on(Events.InteractionCreate, (interaction) => {
-    if (!interaction.isChatInputCommand() || interaction.commandName !== PANTOGRAPH_COMMAND_NAME) {
-      return;
-    }
     if (controller === null) {
       return;
     }
-    void handlePantographCommand(interaction, { controller, getStatusReport, logger });
+    const context = { controller, getStatusReport, logger };
+    if (interaction.isButton() && isStatusPageButton(interaction.customId)) {
+      void handleStatusPageButton(interaction, context);
+      return;
+    }
+    if (interaction.isChatInputCommand() && interaction.commandName === PANTOGRAPH_COMMAND_NAME) {
+      void handlePantographCommand(interaction, context);
+    }
   });
 
   client.on(Events.ShardDisconnect, (closeEvent, shardId) => {
@@ -193,6 +200,13 @@ export function attachPantographBot(dependencies: PantographBotDependencies): Pa
   client.on(Events.Warn, (message) => logger.warn(message));
 
   return { getStatusReport, getHealthReport };
+}
+
+function compareByChannelName(left: WatchedChannel, right: WatchedChannel): number {
+  const byName = (left.channelName ?? left.record.channelId).localeCompare(
+    right.channelName ?? right.record.channelId,
+  );
+  return byName === 0 ? left.record.channelId.localeCompare(right.record.channelId) : byName;
 }
 
 function formatDuration(milliseconds: number): string {
