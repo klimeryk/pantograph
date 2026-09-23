@@ -1,1 +1,88 @@
 @import 'tailwindcss';
+
+@font-face {
+  font-family: 'Departure Mono';
+  src: url('/fonts/DepartureMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-board: 'Departure Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --color-board-cream: #f3ead6;
+  --color-board-amber: #ffb000;
+  --color-board-red: #ff5a4e;
+  --color-board-card: #18181b;
+}
+
+[data-flap-row] {
+  display: inline-flex;
+  gap: 1px;
+  vertical-align: bottom;
+  perspective: 200px;
+}
+
+[data-flap] {
+  position: relative;
+  display: inline-block;
+  width: calc(1ch + 2px);
+  height: 1.3em;
+  line-height: 1.3em;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--color-board-card);
+  color: var(--color-board-cream);
+  text-align: center;
+  transform-style: preserve-3d;
+}
+
+[data-flap]::before {
+  content: attr(data-char);
+  white-space: pre;
+}
+
+[data-flap]::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto 0;
+  height: 1px;
+  background: rgb(0 0 0 / 0.7);
+}
+
+[data-tone='warn'] [data-flap] {
+  color: var(--color-board-amber);
+}
+
+[data-tone='bad'] [data-flap] {
+  color: var(--color-board-red);
+}
+
+[data-pantograph] .frame {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transition: transform 600ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-pantograph][data-contact='raised'] .frame {
+  transform: scaleY(1);
+}
+
+[data-pantograph][data-contact='lowered'] .frame {
+  transform: scaleY(0.3);
+}
+
+[data-platform-edge] {
+  height: 6px;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-board-amber) 0 12px,
+    var(--color-board-card) 12px 24px
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-pantograph] .frame {
+    transition: none;
+  }
+}

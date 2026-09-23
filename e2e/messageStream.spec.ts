@@ -17,6 +17,11 @@ import {
 } from './fakeBackendConfig.ts';
 
 const NO_CONTENT_STATUS = 204;
+const BOARD_ON_TIME = 'ON TIME';
+const BOARD_HELD_AT_SIGNAL = 'HELD AT SIGNAL';
+const BOARD_CANCELLED = 'CANCELLED';
+const PLATFORM_NUMBER_PATTERN = /^\d{1,2}$/;
+const MESSAGES_TO_OVERFLOW_VIEWPORT = 40;
 const REVOCATION_NOTICE_TIMEOUT_MS = 15_000;
 const MENTIONED_USER_ID = '867465548148768840';
 const MENTIONED_CHANNEL_ID = '1551732426290626634';
@@ -62,14 +67,19 @@ async function closeChannel(request: APIRequestContext, key: string): Promise<vo
   expect(response.status()).toBe(NO_CONTENT_STATUS);
 }
 
+async function expectOnTime(page: Page): Promise<void> {
+  await expect(page.locator('[data-board-status]')).toHaveText(BOARD_ON_TIME);
+}
+
 function messageArticle(page: Page, messageId: string) {
   return page.locator(`article[data-message-id="${messageId}"]`);
 }
 
 test('shows, edits and removes messages as they stream in', async ({ page, request }) => {
   await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
-  await expect(page.locator('[data-connection-state]')).toHaveText('Live');
+  await expectOnTime(page);
   await expect(page.locator('[data-channel-name]')).toHaveText('#fake-channel');
+  await expect(page.locator('[data-board-platform]')).toHaveText(PLATFORM_NUMBER_PATTERN);
 
   const messageId = `${Date.now()}`;
   await emit(request, FAKE_CHANNEL_KEY, {
@@ -107,7 +117,7 @@ test('shows, edits and removes messages as they stream in', async ({ page, reque
 
 test('renders Discord formatting instead of raw markers', async ({ page, request }) => {
   await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
-  await expect(page.locator('[data-connection-state]')).toHaveText('Live');
+  await expectOnTime(page);
 
   const messageId = `${Date.now()}`;
   await emit(request, FAKE_CHANNEL_KEY, {
@@ -133,7 +143,7 @@ test('renders Discord formatting instead of raw markers', async ({ page, request
 
 test('renders custom emoji and mention names', async ({ page, request }) => {
   await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
-  await expect(page.locator('[data-connection-state]')).toHaveText('Live');
+  await expectOnTime(page);
 
   const messageId = `${Date.now()}`;
   await emit(request, FAKE_CHANNEL_KEY, {
@@ -160,7 +170,7 @@ test('renders custom emoji and mention names', async ({ page, request }) => {
 
 test('renders image and animated stickers', async ({ page, request }) => {
   await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
-  await expect(page.locator('[data-connection-state]')).toHaveText('Live');
+  await expectOnTime(page);
 
   const messageId = `${Date.now()}`;
   await emit(request, FAKE_CHANNEL_KEY, {
@@ -202,12 +212,14 @@ test('reflects the paused state pushed by the backend', async ({ page, request }
     payload: { paused: true, watchedChannel: { id: '1', name: 'fake-channel' } },
   });
   await expect(banner).toBeVisible();
+  await expect(page.locator('[data-board-status]')).toHaveText(BOARD_HELD_AT_SIGNAL);
 
   await emit(request, FAKE_CHANNEL_KEY, {
     name: StreamEventName.SyncStateChanged,
     payload: { paused: false, watchedChannel: { id: '1', name: 'fake-channel' } },
   });
   await expect(banner).toBeHidden();
+  await expectOnTime(page);
 });
 
 test('keeps channels separate', async ({ page, request }) => {
@@ -241,15 +253,55 @@ test('explains when a link is not active', async ({ page }) => {
 test('shows a landing page without a channel link', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('[data-landing]')).toBeVisible();
-  await expect(page.locator('[data-connection-state]')).toBeHidden();
+  await expect(page.locator('[data-departure-board]')).toBeHidden();
 });
 
 test('tells viewers when their channel link is revoked', async ({ page, request }) => {
   await page.goto(channelPagePath(FAKE_SECOND_CHANNEL_KEY));
-  await expect(page.locator('[data-connection-state]')).toHaveText('Live');
+  await expectOnTime(page);
 
   await closeChannel(request, FAKE_SECOND_CHANNEL_KEY);
   await expect(page.locator('[data-unavailable]')).toBeVisible({
     timeout: REVOCATION_NOTICE_TIMEOUT_MS,
   });
+  await expect(page.locator('[data-board-status]')).toHaveText(BOARD_CANCELLED);
+});
+
+test('announces arrivals waiting below the fold', async ({ page, request }) => {
+  await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
+  await expectOnTime(page);
+
+  const firstId = Date.now();
+  for (let offset = 0; offset < MESSAGES_TO_OVERFLOW_VIEWPORT; offset += 1) {
+    await emit(request, FAKE_CHANNEL_KEY, {
+      name: StreamEventName.MessageCreated,
+      payload: buildMessage({ id: `${firstId + offset}`, content: `service ${offset}` }),
+    });
+  }
+  const lastFillerId = `${firstId + MESSAGES_TO_OVERFLOW_VIEWPORT - 1}`;
+  await expect(messageArticle(page, lastFillerId)).toBeVisible();
+  const pill = page.locator('[data-approaching]');
+  await expect(pill).toBeHidden();
+
+  const list = page.locator('[data-message-list]');
+  await list.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const approachingId = `${firstId + MESSAGES_TO_OVERFLOW_VIEWPORT}`;
+  await emit(request, FAKE_CHANNEL_KEY, {
+    name: StreamEventName.MessageCreated,
+    payload: buildMessage({ id: approachingId, content: 'now approaching' }),
+  });
+  await expect(pill).toBeVisible();
+  await expect(pill.locator('[data-approaching-count]')).toHaveText('1');
+
+  await emit(request, FAKE_CHANNEL_KEY, {
+    name: StreamEventName.MessageCreated,
+    payload: buildMessage({ id: `${firstId + MESSAGES_TO_OVERFLOW_VIEWPORT + 1}` }),
+  });
+  await expect(pill.locator('[data-approaching-count]')).toHaveText('2');
+
+  await pill.click();
+  await expect(pill).toBeHidden();
+  await expect(messageArticle(page, approachingId)).toBeInViewport();
 });

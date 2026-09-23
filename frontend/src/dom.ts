@@ -1,8 +1,8 @@
-export function requireElement<Element extends HTMLElement>(
+export function requireElement<Found extends Element = HTMLElement>(
   root: ParentNode,
   selector: string,
-): Element {
-  const element = root.querySelector<Element>(selector);
+): Found {
+  const element = root.querySelector<Found>(selector);
   if (element === null) {
     throw new Error(`Expected element matching "${selector}" in the document`);
   }

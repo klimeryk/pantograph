@@ -1,15 +1,12 @@
+import { ArrivalChime } from './arrivalChime.ts';
+import { boardStatusFor, DepartureBoard, isInContact } from './departureBoard.ts';
 import { requireElement } from './dom.ts';
 import { MessageStore } from './messageStore.ts';
+import { PantographIndicator } from './pantographIndicator.ts';
 import { MessageListRenderer } from './renderMessages.ts';
 import { channelKeyFromLocation } from './route.ts';
-import { type ConnectionState, connectToStream } from './streamClient.ts';
+import { ConnectionState, connectToStream } from './streamClient.ts';
 import './styles.css';
-
-const CONNECTION_STATE_LABELS: Record<ConnectionState, string> = {
-  connecting: 'Connecting…',
-  live: 'Live',
-  reconnecting: 'Reconnecting…',
-};
 
 const PageMode = {
   Landing: 'landing',
@@ -20,29 +17,62 @@ const PageMode = {
 type PageMode = (typeof PageMode)[keyof typeof PageMode];
 
 const DEFAULT_TITLE = 'Pantograph';
+const ANNOUNCEMENTS_LABELS = { on: 'Announcements on', off: 'Announcements off' } as const;
+const PRESSED_ATTRIBUTE = 'aria-pressed';
 
 const store = new MessageStore();
 const renderer = new MessageListRenderer(document, store);
-const channelName = requireElement(document, '[data-channel-name]');
-const connectionState = requireElement(document, '[data-connection-state]');
+const board = new DepartureBoard(document);
+const pantograph = new PantographIndicator(document);
+const chime = new ArrivalChime();
+const announcementsToggle = requireElement<HTMLButtonElement>(document, '[data-announcements]');
 const pausedBanner = requireElement(document, '[data-paused-banner]');
 const landingSection = requireElement(document, '[data-landing]');
 const unavailableSection = requireElement(document, '[data-unavailable]');
 const streamSection = requireElement(document, '[data-stream]');
 
-function showMode(mode: PageMode): void {
+let mode: PageMode = PageMode.Landing;
+let connection: ConnectionState = ConnectionState.Connecting;
+
+function showMode(nextMode: PageMode): void {
+  mode = nextMode;
   landingSection.hidden = mode !== PageMode.Landing;
   unavailableSection.hidden = mode !== PageMode.Unavailable;
   streamSection.hidden = mode !== PageMode.Stream;
-  connectionState.hidden = mode !== PageMode.Stream;
+  board.hidden = mode === PageMode.Landing;
 }
 
-function renderSyncState(): void {
+function renderBoard(): void {
   const { paused, watchedChannel } = store.syncState;
-  channelName.textContent = watchedChannel ? `#${watchedChannel.name}` : DEFAULT_TITLE;
-  document.title = watchedChannel ? `#${watchedChannel.name} · ${DEFAULT_TITLE}` : DEFAULT_TITLE;
+  const status = boardStatusFor({
+    unavailable: mode === PageMode.Unavailable,
+    connection,
+    paused,
+  });
+  board.setStatus(status);
+  board.setService(watchedChannel?.name ?? null);
+  board.setPlatform(watchedChannel?.id ?? null);
+  pantograph.setRaised(isInContact(status));
   pausedBanner.hidden = !paused;
+  document.title = watchedChannel ? `#${watchedChannel.name} · ${DEFAULT_TITLE}` : DEFAULT_TITLE;
 }
+
+function renderAnnouncementsToggle(): void {
+  announcementsToggle.setAttribute(PRESSED_ATTRIBUTE, String(chime.enabled));
+  announcementsToggle.textContent = chime.enabled
+    ? ANNOUNCEMENTS_LABELS.on
+    : ANNOUNCEMENTS_LABELS.off;
+}
+
+announcementsToggle.addEventListener('click', () => {
+  if (chime.enabled) {
+    chime.disable();
+  } else {
+    chime.enable();
+  }
+  renderAnnouncementsToggle();
+});
+renderAnnouncementsToggle();
 
 const key = channelKeyFromLocation(window.location);
 
@@ -50,20 +80,27 @@ if (key === null) {
   showMode(PageMode.Landing);
 } else {
   showMode(PageMode.Stream);
+  renderBoard();
   connectToStream({
     key,
     onEvent(event) {
       const change = store.apply(event);
-      renderer.applyChange(change);
+      const arrival = renderer.applyChange(change);
+      if (arrival !== null) {
+        pantograph.spark();
+        chime.play();
+      }
       if (change.kind === 'reset' || change.kind === 'syncState') {
-        renderSyncState();
+        renderBoard();
       }
     },
     onConnectionStateChange(state) {
-      connectionState.textContent = CONNECTION_STATE_LABELS[state];
+      connection = state;
+      renderBoard();
     },
     onUnavailable() {
       showMode(PageMode.Unavailable);
+      renderBoard();
     },
   });
 }

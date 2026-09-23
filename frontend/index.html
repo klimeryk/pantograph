@@ -4,48 +4,133 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pantograph</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script type="module" src="/src/main.ts"></script>
   </head>
   <body class="flex h-full flex-col bg-neutral-950 text-neutral-100">
-    <header class="flex items-baseline justify-between gap-4 border-b border-neutral-800 px-4 py-3">
-      <h1 class="text-lg font-semibold" data-channel-name>Pantograph</h1>
-      <p class="text-sm text-neutral-400" role="status" data-connection-state hidden>Connecting…</p>
+    <header
+      class="relative border-t-2 border-neutral-400 bg-neutral-900/50 px-4 pb-3 pt-1"
+      data-departure-board
+    >
+      <svg
+        class="absolute top-0 left-4 h-8 w-10 text-neutral-300"
+        viewBox="0 0 40 32"
+        aria-hidden="true"
+        data-pantograph
+        data-contact="lowered"
+      >
+        <g
+          class="frame"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <line x1="12" y1="31" x2="28" y2="31" vector-effect="non-scaling-stroke" />
+          <line x1="20" y1="31" x2="30" y2="17" vector-effect="non-scaling-stroke" />
+          <line x1="30" y1="17" x2="20" y2="2" vector-effect="non-scaling-stroke" />
+          <line x1="13" y1="2" x2="27" y2="2" vector-effect="non-scaling-stroke" />
+        </g>
+        <circle cx="20" cy="2" r="4" fill="var(--color-board-amber)" opacity="0" data-arc />
+      </svg>
+      <div class="flex items-end justify-between gap-4 pl-14">
+        <h1 class="font-board text-[11px] uppercase tracking-[0.3em] text-neutral-400 leading-8">
+          Pantograph
+        </h1>
+        <button
+          type="button"
+          class="rounded border border-neutral-700 px-2 py-1 font-board text-[11px] uppercase tracking-widest text-neutral-400 hover:border-neutral-500 aria-pressed:border-amber-400 aria-pressed:text-amber-300"
+          aria-pressed="false"
+          data-announcements
+        >
+          Announcements off
+        </button>
+      </div>
+      <dl
+        class="mt-3 grid grid-flow-dense grid-cols-[auto_1fr] gap-x-6 gap-y-3 sm:grid-cols-[auto_1fr_auto_auto]"
+      >
+        <div>
+          <dt class="font-board text-[11px] uppercase tracking-widest text-neutral-500">Time</dt>
+          <dd class="mt-1 font-board text-[22px]" data-board-time></dd>
+        </div>
+        <div class="col-span-2 min-w-0 sm:col-span-1">
+          <dt class="font-board text-[11px] uppercase tracking-widest text-neutral-500">Service</dt>
+          <dd class="mt-1 overflow-hidden font-board text-[22px]" data-channel-name></dd>
+        </div>
+        <div>
+          <dt class="font-board text-[11px] uppercase tracking-widest text-neutral-500">Platform</dt>
+          <dd class="mt-1 font-board text-[22px]" data-board-platform></dd>
+        </div>
+        <div class="col-span-2 min-w-0 sm:col-span-1">
+          <dt class="font-board text-[11px] uppercase tracking-widest text-neutral-500">Status</dt>
+          <dd
+            class="mt-1 overflow-hidden font-board text-[22px]"
+            role="status"
+            data-board-status
+          ></dd>
+        </div>
+      </dl>
     </header>
     <main class="flex min-h-0 flex-1 flex-col">
-      <section class="px-4 py-6 text-sm text-neutral-400" data-landing hidden>
-        <p>Open a link shared by a server moderator to follow a channel.</p>
+      <section class="px-4 py-10" data-landing hidden>
+        <article
+          class="mx-auto max-w-md rounded-md border-2 border-dashed border-amber-400/60 bg-neutral-900 p-5 text-sm text-neutral-300"
+        >
+          <p class="font-board text-[11px] uppercase tracking-[0.3em] text-amber-300">
+            Pantograph · Admit one
+          </p>
+          <p class="mt-3">Open a link shared by a server moderator to follow a channel.</p>
+          <p class="mt-4 font-board text-[11px] uppercase tracking-widest text-neutral-500">
+            Valid only with a link from a server moderator. Not valid for travel.
+          </p>
+        </article>
       </section>
       <section class="px-4 py-6 text-sm text-neutral-400" role="alert" data-unavailable hidden>
-        <p>This link is not active. Ask a server moderator for a new one.</p>
+        <p>This service has been cancelled. Ask a server moderator for a new link.</p>
       </section>
-      <section class="flex min-h-0 flex-1 flex-col" data-stream hidden>
+      <section class="relative flex min-h-0 flex-1 flex-col" data-stream hidden>
         <p
           class="border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-200"
           role="status"
           data-paused-banner
           hidden
         >
-          Syncing is paused. New messages will appear once a moderator resumes it.
+          Held at signal: syncing is paused. Messages resume once a moderator lifts the hold.
         </p>
-        <p class="px-4 py-6 text-sm text-neutral-500" data-empty-state>No messages yet.</p>
+        <p class="px-4 py-6 text-sm text-neutral-500" data-empty-state>
+          No services scheduled. Messages will arrive here.
+        </p>
         <ol
-          class="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4"
+          class="flex flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-4 py-4"
           role="log"
           aria-live="polite"
           aria-relevant="additions text"
           data-message-list
         ></ol>
+        <button
+          type="button"
+          class="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-4 py-2 font-board text-[11px] uppercase tracking-widest text-neutral-950 shadow-lg hover:bg-amber-300"
+          data-approaching
+          hidden
+        >
+          Now approaching · <span data-approaching-count>0</span>
+        </button>
+        <div aria-hidden="true" data-platform-edge></div>
       </section>
     </main>
     <template data-message-template>
       <li>
-        <article class="flex gap-3" data-message-id>
+        <article class="grid grid-cols-[auto_auto_1fr] items-start gap-x-3" data-message-id>
+          <time
+            class="mt-1 flex w-[6ch] flex-col whitespace-nowrap font-board text-[11px] leading-4 text-amber-300"
+            data-created
+          ></time>
           <img class="mt-1 size-8 shrink-0 rounded-full bg-neutral-800" alt="" data-avatar />
-          <div class="min-w-0 flex-1">
+          <div class="min-w-0">
             <header class="flex flex-wrap items-baseline gap-x-2 text-sm">
               <address class="font-semibold not-italic" data-author></address>
-              <time class="text-xs text-neutral-500" data-created></time>
-              <span class="text-xs text-neutral-500" data-edited hidden>(edited)</span>
+              <span class="text-xs text-neutral-500" data-edited hidden>(amended)</span>
             </header>
             <div class="whitespace-pre-wrap break-words" data-content></div>
             <ul class="mt-2 flex flex-wrap gap-2" data-stickers></ul>

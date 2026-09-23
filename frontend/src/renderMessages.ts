@@ -10,6 +10,7 @@ import type { AnimationItem } from 'lottie-web/build/player/lottie_light';
 import { renderDiscordMarkdown } from './discordMarkdown.ts';
 import { requireElement } from './dom.ts';
 import type { MessageStore, StoreChange } from './messageStore.ts';
+import { prefersReducedMotion } from './motion.ts';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
 const IMAGE_CONTENT_TYPE_PREFIX = 'image/';
@@ -20,45 +21,77 @@ const STICKER_SIZE_CLASS = 'size-32';
 const STICKER_NAME_CLASS = 'rounded bg-neutral-800 px-1 text-sm text-neutral-400';
 const LOTTIE_RENDERER = 'svg';
 const LOTTIE_LOAD_FAILED_EVENT = 'data_failed';
+const MESSAGE_DAY_CLASS = 'text-neutral-500';
+const ARRIVAL_DURATION_MS = 700;
+const ARRIVAL_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)';
+const ARRIVAL_KEYFRAMES: Keyframe[] = [
+  { transform: 'translateX(3rem)', opacity: 0 },
+  { transform: 'none', opacity: 1 },
+];
+const DEPARTURE_DURATION_MS = 400;
+const DEPARTURE_EASING = 'cubic-bezier(0.7, 0, 0.84, 0)';
+const DEPARTURE_KEYFRAMES: Keyframe[] = [
+  { transform: 'none', opacity: 1 },
+  { transform: 'translateX(-3rem)', opacity: 0 },
+];
 
 const animationsByItem = new WeakMap<Element, AnimationItem[]>();
 const discardedItems = new WeakSet<Element>();
 
-const timeFormatter = new Intl.DateTimeFormat(undefined, {
+const clockFormatter = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
   minute: '2-digit',
-  month: 'short',
-  day: 'numeric',
+  hourCycle: 'h23',
+});
+const dayFormatter = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: '2-digit' });
+const fullDateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
 });
 
 export class MessageListRenderer {
   readonly #list: HTMLOListElement;
   readonly #emptyState: HTMLElement;
   readonly #template: HTMLTemplateElement;
+  readonly #approaching: HTMLButtonElement;
+  readonly #approachingCount: HTMLElement;
   readonly #store: MessageStore;
+  #approachingMessages = 0;
 
   constructor(root: ParentNode, store: MessageStore) {
     this.#list = requireElement<HTMLOListElement>(root, '[data-message-list]');
     this.#emptyState = requireElement(root, '[data-empty-state]');
     this.#template = requireElement<HTMLTemplateElement>(root, '[data-message-template]');
+    this.#approaching = requireElement<HTMLButtonElement>(root, '[data-approaching]');
+    this.#approachingCount = requireElement(root, '[data-approaching-count]');
     this.#store = store;
+    this.#list.addEventListener('scroll', () => {
+      if (this.#isNearBottom()) {
+        this.#clearApproaching();
+      }
+    });
+    this.#approaching.addEventListener('click', () => {
+      this.#clearApproaching();
+      this.#scrollToBottom(true);
+    });
   }
 
-  applyChange(change: StoreChange): void {
+  applyChange(change: StoreChange): MessageView | null {
     const wasNearBottom = this.#isNearBottom();
+    let arrival: MessageView | null = null;
     switch (change.kind) {
       case 'reset':
         this.#renderAll();
         break;
       case 'upsert':
-        this.#upsert(change.message);
+        arrival = this.#upsert(change.message);
         for (const id of change.evictedIds) {
-          this.#removeItem(id);
+          this.#removeItem(id, false);
         }
         break;
       case 'remove':
         for (const id of change.ids) {
-          this.#removeItem(id);
+          this.#removeItem(id, true);
         }
         break;
       case 'syncState':
@@ -67,8 +100,11 @@ export class MessageListRenderer {
     }
     this.#emptyState.hidden = this.#list.childElementCount > 0;
     if (wasNearBottom || change.kind === 'reset') {
-      this.#list.scrollTop = this.#list.scrollHeight;
+      this.#scrollToBottom(false);
+    } else if (arrival !== null) {
+      this.#announceApproaching();
     }
+    return arrival;
   }
 
   #renderAll(): void {
@@ -78,29 +114,47 @@ export class MessageListRenderer {
     this.#list.replaceChildren(
       ...this.#store.messagesOldestFirst.map((message) => this.#createItem(message)),
     );
+    this.#clearApproaching();
   }
 
-  #removeItem(messageId: string): void {
+  #removeItem(messageId: string, animated: boolean): void {
     const item = this.#findItem(messageId);
     if (item === null) {
       return;
     }
     discardItem(item);
-    item.remove();
+    if (!animated || prefersReducedMotion()) {
+      item.remove();
+      return;
+    }
+    requireElement(item, `[${MESSAGE_ID_ATTRIBUTE}]`).removeAttribute(MESSAGE_ID_ATTRIBUTE);
+    const departure = item.animate(DEPARTURE_KEYFRAMES, {
+      duration: DEPARTURE_DURATION_MS,
+      easing: DEPARTURE_EASING,
+      fill: 'forwards',
+    });
+    departure.finished.then(
+      () => item.remove(),
+      () => item.remove(),
+    );
   }
 
-  #upsert(message: MessageView): void {
+  #upsert(message: MessageView): MessageView | null {
     const existing = this.#findItem(message.id);
     const item = this.#createItem(message);
     if (existing) {
       discardItem(existing);
       existing.replaceWith(item);
-      return;
+      return null;
     }
     const nextItem = [...this.#list.children].find(
       (candidate) => compareSnowflakes(messageIdOf(candidate), message.id) > 0,
     );
     this.#list.insertBefore(item, nextItem ?? null);
+    if (!prefersReducedMotion()) {
+      item.animate(ARRIVAL_KEYFRAMES, { duration: ARRIVAL_DURATION_MS, easing: ARRIVAL_EASING });
+    }
+    return message;
   }
 
   #findItem(messageId: string): Element | null {
@@ -122,8 +176,10 @@ export class MessageListRenderer {
     }
 
     const created = requireElement<HTMLTimeElement>(item, '[data-created]');
+    const createdAt = new Date(message.createdAt);
     created.dateTime = message.createdAt;
-    created.textContent = timeFormatter.format(new Date(message.createdAt));
+    created.title = fullDateFormatter.format(createdAt);
+    created.replaceChildren(...createTimetableTime(createdAt));
 
     requireElement(item, '[data-edited]').hidden = message.editedAt === null;
     requireElement(item, '[data-content]').replaceChildren(
@@ -150,6 +206,24 @@ export class MessageListRenderer {
       this.#list.scrollHeight - this.#list.scrollTop - this.#list.clientHeight;
     return distanceFromBottom < NEAR_BOTTOM_THRESHOLD_PX;
   }
+
+  #scrollToBottom(smooth: boolean): void {
+    this.#list.scrollTo({
+      top: this.#list.scrollHeight,
+      behavior: smooth && !prefersReducedMotion() ? 'smooth' : 'auto',
+    });
+  }
+
+  #announceApproaching(): void {
+    this.#approachingMessages += 1;
+    this.#approachingCount.textContent = String(this.#approachingMessages);
+    this.#approaching.hidden = false;
+  }
+
+  #clearApproaching(): void {
+    this.#approachingMessages = 0;
+    this.#approaching.hidden = true;
+  }
 }
 
 function messageIdOf(item: Element): string {
@@ -157,6 +231,22 @@ function messageIdOf(item: Element): string {
     item.querySelector(`[${MESSAGE_ID_ATTRIBUTE}]`)?.getAttribute(MESSAGE_ID_ATTRIBUTE) ??
     SNOWFLAKE_BEFORE_ALL_OTHERS
   );
+}
+
+function createTimetableTime(createdAt: Date): HTMLSpanElement[] {
+  const clock = document.createElement('span');
+  clock.textContent = clockFormatter.format(createdAt);
+  if (isSameDay(createdAt, new Date())) {
+    return [clock];
+  }
+  const day = document.createElement('span');
+  day.className = MESSAGE_DAY_CLASS;
+  day.textContent = dayFormatter.format(createdAt);
+  return [clock, day];
+}
+
+function isSameDay(left: Date, right: Date): boolean {
+  return left.toDateString() === right.toDateString();
 }
 
 function createBotBadge(): HTMLSpanElement {

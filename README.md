@@ -81,6 +81,23 @@ npm run build
 PUBLIC_URL=https://mirror.example.com npm start
 ```
 
+## The web page
+
+The channel page is styled as a station departure board, a nod to the railway theme. Messages
+themselves render as normal rich text (Discord markdown, custom emoji, stickers, images); only the
+chrome around them is themed.
+
+- **Board header**: TIME is a live clock, SERVICE is the channel, PLATFORM is a number derived from
+  the channel id (purely decorative, but stable for a given channel), STATUS is the connection:
+  `BOARDING` (connecting), `ON TIME` (live), `DELAYED` (reconnecting), `HELD AT SIGNAL` (syncing
+  paused by a moderator) and `CANCELLED` (the link is no longer active).
+- **Pantograph**: the small arm at the top left is raised and touching the wire while the stream
+  is live and folds down when it is not. It sparks on every new message.
+- **Now approaching**: when you have scrolled up, new messages are counted in a pill at the bottom
+  instead of moving the page; click it to jump to the latest.
+- **Announcements**: an opt-in station chime for new messages, off by default and remembered per
+  browser. Everything animated respects the system "reduce motion" setting.
+
 ## Links and who can see what
 
 - A channel link is an unlisted, unguessable token (about 80 bits of randomness). Anyone who has
@@ -89,8 +106,8 @@ PUBLIC_URL=https://mirror.example.com npm start
 - Links are shown only in ephemeral replies to members with **Manage Server**. The bot never posts
   them in a channel.
 - `/pantograph rotate #channel` issues a new link and disconnects everyone on the old one;
-  `/pantograph unwatch #channel` disables the link entirely. Viewers on a disabled link see
-  "This link is not active".
+  `/pantograph unwatch #channel` disables the link entirely. Viewers on a disabled link see the
+  board flip to `CANCELLED` and "This service has been cancelled".
 - Deleting a mirrored channel, or removing the bot from a server, disables the affected links
   automatically.
 - Nothing about the links is exposed by `/api/health` or the logs.
@@ -181,7 +198,7 @@ Backend code must stay within Node's type-stripping subset: no `enum`, no parame
 | Messages arrive on the page with empty text                    | Same as above; the intent was enabled after the bot connected, restart it            |
 | `/pantograph` does not show up in Discord                      | The bot was added without the `applications.commands` scope. Re-add it via the install link from the log |
 | `/pantograph watch` says permissions are missing               | Give the bot **View Channel** and **Read Message History** in that channel           |
-| A link opens but shows "This link is not active"              | It was rotated, unwatched, or the state file was deleted. Run `/pantograph status` for the current link |
+| A link opens but the board says `CANCELLED`                    | It was rotated, unwatched, or the state file was deleted. Run `/pantograph status` for the current link |
 | Links point at the wrong host                                  | Set `PUBLIC_URL` to the origin viewers use                                            |
 | Startup says the state file is from an earlier version         | Delete it and run `/pantograph watch` again                                           |
 | Attachments stop loading after a day                           | Discord attachment URLs are signed and expire; the live window is short enough that this rarely matters |
