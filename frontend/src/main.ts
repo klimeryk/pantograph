@@ -7,7 +7,6 @@ import { PantographIndicator } from './pantographIndicator.ts';
 import { MessageListRenderer } from './renderMessages.ts';
 import { channelKeyFromLocation } from './route.ts';
 import { ConnectionState, connectToStream } from './streamClient.ts';
-import './styles.css';
 
 const PageMode = {
   Landing: 'landing',
