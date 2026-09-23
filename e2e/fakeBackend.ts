@@ -10,6 +10,7 @@ import {
   FAKE_BACKEND_HOST,
   FAKE_BACKEND_PORT,
   FAKE_CHANNEL_KEY,
+  FAKE_PIXEL_PATH,
   FAKE_SECOND_CHANNEL_KEY,
   FAKE_STICKER_JSON_BASE_URL,
   fakeChannelClosePath,
@@ -27,6 +28,11 @@ const STICKER_ROUTE_PARAMETER = 'sticker';
 const NO_CONTENT_STATUS = 204;
 const NOT_FOUND_STATUS = 404;
 const JSON_CONTENT_TYPE = 'application/json';
+const GIF_CONTENT_TYPE = 'image/gif';
+const TRANSPARENT_PIXEL = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64',
+);
 
 export type FakeEvent =
   | { name: typeof StreamEventName.MessageCreated; payload: MessageView }
@@ -97,6 +103,10 @@ app.get(fakeStickerJsonPath(`:${STICKER_ROUTE_PARAMETER}`), async (context) => {
   const animation = await readFile(LOTTIE_STICKER_FIXTURE_PATH, 'utf8');
   context.header('Content-Type', JSON_CONTENT_TYPE);
   return context.body(animation);
+});
+app.get(FAKE_PIXEL_PATH, (context) => {
+  context.header('Content-Type', GIF_CONTENT_TYPE);
+  return context.body(TRANSPARENT_PIXEL);
 });
 app.route(
   '/',

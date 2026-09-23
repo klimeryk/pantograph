@@ -87,11 +87,11 @@ const INLINE_CONTAINER_CLASSES: Partial<Record<InlineContainerType, string>> = {
 const HeadingLevel = { Title: 1, Section: 2, Subsection: 3 } as const;
 type HeadingStyle = { tag: keyof HTMLElementTagNameMap; className: string };
 const HEADING_STYLES_BY_LEVEL: ReadonlyMap<number, HeadingStyle> = new Map([
-  [HeadingLevel.Title, { tag: 'h1', className: 'mt-2 text-2xl font-bold' }],
-  [HeadingLevel.Section, { tag: 'h2', className: 'mt-2 text-xl font-bold' }],
-  [HeadingLevel.Subsection, { tag: 'h3', className: 'mt-2 text-lg font-bold' }],
+  [HeadingLevel.Title, { tag: 'h2', className: 'mt-2 text-2xl font-bold' }],
+  [HeadingLevel.Section, { tag: 'h3', className: 'mt-2 text-xl font-bold' }],
+  [HeadingLevel.Subsection, { tag: 'h4', className: 'mt-2 text-lg font-bold' }],
 ]);
-const FALLBACK_HEADING_STYLE: HeadingStyle = { tag: 'h3', className: 'mt-2 text-lg font-bold' };
+const FALLBACK_HEADING_STYLE: HeadingStyle = { tag: 'h4', className: 'mt-2 text-lg font-bold' };
 
 const INLINE_CODE_CLASS = 'rounded bg-neutral-800 px-1 py-0.5 font-mono text-sm';
 const CODE_BLOCK_CLASS =

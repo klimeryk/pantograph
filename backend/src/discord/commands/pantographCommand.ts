@@ -33,12 +33,13 @@ const Subcommand = {
 } as const;
 
 const CHANNEL_OPTION = 'channel';
+const REQUIRED_MEMBER_PERMISSION = PermissionFlagsBits.ManageGuild;
 
 export function buildPantographCommand(): SlashCommandSubcommandsOnlyBuilder {
   return new SlashCommandBuilder()
     .setName(PANTOGRAPH_COMMAND_NAME)
     .setDescription('Mirror channels of this server to web pages')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDefaultMemberPermissions(REQUIRED_MEMBER_PERMISSION)
     .addSubcommand((subcommand) =>
       withChannelOption(
         subcommand
@@ -137,6 +138,15 @@ async function dispatchSubcommand(
     await respond(
       interaction,
       buildNotice(NoticeTone.Error, 'Server only', ['This command only works inside a server.']),
+    );
+    return;
+  }
+  if (!interaction.memberPermissions.has(REQUIRED_MEMBER_PERMISSION)) {
+    await respond(
+      interaction,
+      buildNotice(NoticeTone.Error, 'Not allowed', [
+        'Pantograph commands need the Manage Server permission.',
+      ]),
     );
     return;
   }

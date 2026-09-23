@@ -32,6 +32,11 @@ const DEPARTURE_KEYFRAMES: Keyframe[] = [
   { transform: 'translateX(-3rem)', opacity: 0 },
 ];
 
+type RenderedMessage = {
+  item: HTMLLIElement;
+  message: MessageView;
+};
+
 const clockFormatter = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
   minute: '2-digit',
@@ -44,6 +49,7 @@ const fullDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 export class MessageListRenderer {
+  readonly #scroller: HTMLElement;
   readonly #list: HTMLOListElement;
   readonly #emptyState: HTMLElement;
   readonly #template: HTMLTemplateElement;
@@ -51,17 +57,19 @@ export class MessageListRenderer {
   readonly #approachingCount: HTMLElement;
   readonly #store: MessageStore;
   readonly #stickers: LottieStickerPlayer;
+  readonly #renderedById = new Map<string, RenderedMessage>();
   #approachingMessages = 0;
 
   constructor(root: ParentNode, store: MessageStore) {
+    this.#scroller = requireElement(root, '[data-message-scroller]');
     this.#list = requireElement<HTMLOListElement>(root, '[data-message-list]');
     this.#emptyState = requireElement(root, '[data-empty-state]');
     this.#template = requireElement<HTMLTemplateElement>(root, '[data-message-template]');
     this.#approaching = requireElement<HTMLButtonElement>(root, '[data-approaching]');
     this.#approachingCount = requireElement(root, '[data-approaching-count]');
     this.#store = store;
-    this.#stickers = new LottieStickerPlayer(this.#list);
-    this.#list.addEventListener('scroll', () => {
+    this.#stickers = new LottieStickerPlayer(this.#scroller);
+    this.#scroller.addEventListener('scroll', () => {
       if (this.#isNearBottom()) {
         this.#clearApproaching();
       }
@@ -107,6 +115,7 @@ export class MessageListRenderer {
     for (const existing of this.#list.children) {
       this.#stickers.discard(existing);
     }
+    this.#renderedById.clear();
     this.#list.replaceChildren(
       ...this.#store.messagesOldestFirst.map((message) => this.#createItem(message)),
     );
@@ -114,10 +123,12 @@ export class MessageListRenderer {
   }
 
   #removeItem(messageId: string, animated: boolean): void {
-    const item = this.#findItem(messageId);
-    if (item === null) {
+    const rendered = this.#renderedById.get(messageId);
+    if (rendered === undefined) {
       return;
     }
+    this.#renderedById.delete(messageId);
+    const { item } = rendered;
     this.#stickers.discard(item);
     if (!animated || prefersReducedMotion()) {
       item.remove();
@@ -136,40 +147,37 @@ export class MessageListRenderer {
   }
 
   #upsert(message: MessageView): MessageView | null {
-    const existing = this.#findItem(message.id);
-    const item = this.#createItem(message);
-    if (existing) {
-      this.#stickers.discard(existing);
-      existing.replaceWith(item);
+    const existing = this.#renderedById.get(message.id);
+    if (existing !== undefined) {
+      patchItem(existing.item, existing.message, message);
+      existing.message = message;
       return null;
     }
-    const nextItem = [...this.#list.children].find(
-      (candidate) => compareSnowflakes(messageIdOf(candidate), message.id) > 0,
-    );
-    this.#list.insertBefore(item, nextItem ?? null);
+    const item = this.#createItem(message);
+    this.#list.insertBefore(item, this.#itemAfter(message.id));
     if (!prefersReducedMotion()) {
       item.animate(ARRIVAL_KEYFRAMES, { duration: ARRIVAL_DURATION_MS, easing: ARRIVAL_EASING });
     }
     return message;
   }
 
-  #findItem(messageId: string): Element | null {
-    return this.#list.querySelector(`li:has([${MESSAGE_ID_ATTRIBUTE}="${messageId}"])`);
+  #itemAfter(messageId: string): Element | null {
+    const last = this.#list.lastElementChild;
+    if (last === null || compareSnowflakes(messageIdOf(last), messageId) < 0) {
+      return null;
+    }
+    return (
+      [...this.#list.children].find(
+        (candidate) => compareSnowflakes(messageIdOf(candidate), messageId) > 0,
+      ) ?? null
+    );
   }
 
   #createItem(message: MessageView): HTMLLIElement {
     const fragment = this.#template.content.cloneNode(true) as DocumentFragment;
     const item = requireElement<HTMLLIElement>(fragment, 'li');
     requireElement(item, 'article').setAttribute(MESSAGE_ID_ATTRIBUTE, message.id);
-
-    const avatar = requireElement<HTMLImageElement>(item, '[data-avatar]');
-    avatar.src = message.author.avatarUrl;
-
-    const author = requireElement(item, '[data-author]');
-    author.textContent = message.author.displayName;
-    if (message.author.isBot) {
-      author.append(createBotBadge());
-    }
+    fillAuthor(item, message);
 
     const created = requireElement<HTMLTimeElement>(item, '[data-created]');
     const createdAt = new Date(message.createdAt);
@@ -177,13 +185,8 @@ export class MessageListRenderer {
     created.title = fullDateFormatter.format(createdAt);
     created.replaceChildren(...createTimetableTime(createdAt));
 
-    requireElement(item, '[data-edited]').hidden = message.editedAt === null;
-    requireElement(item, '[data-content]').replaceChildren(
-      renderDiscordMarkdown(message.content, {
-        extended: message.author.isBot,
-        mentions: message.mentions,
-      }),
-    );
+    fillEdited(item, message);
+    fillContent(item, message);
 
     const stickers = requireElement<HTMLUListElement>(item, '[data-stickers]');
     stickers.replaceChildren(
@@ -191,21 +194,20 @@ export class MessageListRenderer {
     );
     stickers.hidden = message.stickers.length === 0;
 
-    const attachments = requireElement<HTMLUListElement>(item, '[data-attachments]');
-    attachments.replaceChildren(...message.attachments.map(createAttachmentItem));
-    attachments.hidden = message.attachments.length === 0;
+    fillAttachments(item, message);
+    this.#renderedById.set(message.id, { item, message });
     return item;
   }
 
   #isNearBottom(): boolean {
     const distanceFromBottom =
-      this.#list.scrollHeight - this.#list.scrollTop - this.#list.clientHeight;
+      this.#scroller.scrollHeight - this.#scroller.scrollTop - this.#scroller.clientHeight;
     return distanceFromBottom < NEAR_BOTTOM_THRESHOLD_PX;
   }
 
   #scrollToBottom(smooth: boolean): void {
-    this.#list.scrollTo({
-      top: this.#list.scrollHeight,
+    this.#scroller.scrollTo({
+      top: this.#scroller.scrollHeight,
       behavior: smooth && !prefersReducedMotion() ? 'smooth' : 'auto',
     });
   }
@@ -220,6 +222,53 @@ export class MessageListRenderer {
     this.#approachingMessages = 0;
     this.#approaching.hidden = true;
   }
+}
+
+function patchItem(item: Element, previous: MessageView, next: MessageView): void {
+  if (!sameJson(previous.author, next.author)) {
+    fillAuthor(item, next);
+  }
+  if (previous.editedAt !== next.editedAt) {
+    fillEdited(item, next);
+  }
+  if (previous.content !== next.content || !sameJson(previous.mentions, next.mentions)) {
+    fillContent(item, next);
+  }
+  if (!sameJson(previous.attachments, next.attachments)) {
+    fillAttachments(item, next);
+  }
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function fillAuthor(item: Element, message: MessageView): void {
+  requireElement<HTMLImageElement>(item, '[data-avatar]').src = message.author.avatarUrl;
+  const author = requireElement(item, '[data-author]');
+  author.textContent = message.author.displayName;
+  if (message.author.isBot) {
+    author.append(createBotBadge());
+  }
+}
+
+function fillEdited(item: Element, message: MessageView): void {
+  requireElement(item, '[data-edited]').hidden = message.editedAt === null;
+}
+
+function fillContent(item: Element, message: MessageView): void {
+  requireElement(item, '[data-content]').replaceChildren(
+    renderDiscordMarkdown(message.content, {
+      extended: message.author.isBot,
+      mentions: message.mentions,
+    }),
+  );
+}
+
+function fillAttachments(item: Element, message: MessageView): void {
+  const attachments = requireElement<HTMLUListElement>(item, '[data-attachments]');
+  attachments.replaceChildren(...message.attachments.map(createAttachmentItem));
+  attachments.hidden = message.attachments.length === 0;
 }
 
 function messageIdOf(item: Element): string {
@@ -265,6 +314,8 @@ function createStickerItem(
   }
   const container = document.createElement('div');
   container.className = STICKER_SIZE_CLASS;
+  container.setAttribute('role', 'img');
+  container.setAttribute('aria-label', stickerLabel(sticker.name));
   stickerItem.append(container);
   player.mount(item, stickerItem, container, sticker.id, () =>
     container.replaceWith(createStickerName(sticker.name)),

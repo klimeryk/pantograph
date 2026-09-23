@@ -55,6 +55,16 @@
   },
   "overrides": [
     {
+      "includes": ["frontend/index.html"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noNoninteractiveTabindex": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["frontend/**"],
       "linter": {
         "rules": {

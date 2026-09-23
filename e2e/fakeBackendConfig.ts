@@ -9,6 +9,8 @@ export const FAKE_STICKER_JSON_BASE_URL = `${FAKE_BACKEND_ORIGIN}/__fake/sticker
 export const FAKE_LOTTIE_STICKER_ID = '1552081214045822976';
 export const FAKE_IMAGE_STICKER_ID = '1552081214045822977';
 
+export const FAKE_PIXEL_PATH = '/__fake/pixel.gif';
+
 const FAKE_CHANNELS_PATH_PREFIX = '/__fake/channels/';
 const FAKE_STICKERS_PATH_PREFIX = '/__fake/stickers/';
 

@@ -22,8 +22,6 @@ export type PersistedBotState = {
   guilds: Record<string, GuildRecord>;
 };
 
-export type BotStateListener = (current: PersistedBotState, previous: PersistedBotState) => void;
-
 const EMPTY_GUILD_RECORD: GuildRecord = { notifyChannelId: null, registeredCommandHash: null };
 const STATE_FILE_INDENT = 2;
 const TEMP_FILE_SUFFIX = '.tmp';
@@ -32,7 +30,6 @@ export class BotStateStore {
   readonly #filePath: string;
   #state: PersistedBotState;
   #writeChain: Promise<void> = Promise.resolve();
-  readonly #listeners = new Set<BotStateListener>();
 
   private constructor(filePath: string, state: PersistedBotState) {
     this.#filePath = filePath;
@@ -45,17 +42,6 @@ export class BotStateStore {
       options.filePath,
       persisted ?? { version: STATE_VERSION, channels: {}, guilds: {} },
     );
-  }
-
-  get snapshot(): PersistedBotState {
-    return this.#state;
-  }
-
-  onChange(listener: BotStateListener): () => void {
-    this.#listeners.add(listener);
-    return () => {
-      this.#listeners.delete(listener);
-    };
   }
 
   channel(channelId: string): WatchedChannelRecord | null {
@@ -135,10 +121,15 @@ export class BotStateStore {
     const previous = this.#state;
     const current = { ...previous, ...changes };
     this.#state = current;
-    this.#writeChain = this.#writeChain.then(() => writePersistedState(this.#filePath, current));
-    await this.#writeChain;
-    for (const listener of this.#listeners) {
-      listener(current, previous);
+    const write = this.#writeChain.then(() => writePersistedState(this.#filePath, current));
+    this.#writeChain = write.catch(() => undefined);
+    try {
+      await write;
+    } catch (error) {
+      if (this.#state === current) {
+        this.#state = previous;
+      }
+      throw error;
     }
   }
 }

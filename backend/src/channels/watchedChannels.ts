@@ -62,7 +62,12 @@ export class WatchedChannels {
       watchedAt: new Date().toISOString(),
     };
     this.#entries.set(record.channelId, this.#createEntry(record));
-    await this.#state.addChannel(record);
+    try {
+      await this.#state.addChannel(record);
+    } catch (error) {
+      this.#entries.delete(record.channelId);
+      throw error;
+    }
     return this.#view(record);
   }
 

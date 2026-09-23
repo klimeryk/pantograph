@@ -1,3 +1,4 @@
+import { ArrivalAnnouncer } from './arrivalAnnouncer.ts';
 import { ArrivalChime } from './arrivalChime.ts';
 import { boardStatusFor, DepartureBoard, isInContact } from './departureBoard.ts';
 import { requireElement } from './dom.ts';
@@ -25,6 +26,7 @@ const renderer = new MessageListRenderer(document, store);
 const board = new DepartureBoard(document);
 const pantograph = new PantographIndicator(document);
 const chime = new ArrivalChime();
+const announcer = new ArrivalAnnouncer(document);
 const announcementsToggle = requireElement<HTMLButtonElement>(document, '[data-announcements]');
 const pausedBanner = requireElement(document, '[data-paused-banner]');
 const landingSection = requireElement(document, '[data-landing]');
@@ -87,6 +89,7 @@ if (key === null) {
       const change = store.apply(event);
       const arrival = renderer.applyChange(change);
       if (arrival !== null) {
+        announcer.announce(arrival);
         pantograph.spark();
         chime.play();
       }

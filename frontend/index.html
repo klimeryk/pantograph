@@ -101,13 +101,15 @@
         <p class="px-4 py-6 text-sm text-neutral-500" data-empty-state>
           No services scheduled. Messages will arrive here.
         </p>
-        <ol
-          class="flex flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-4 py-4"
-          role="log"
-          aria-live="polite"
-          aria-relevant="additions text"
-          data-message-list
-        ></ol>
+        <section
+          class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+          aria-label="Messages"
+          tabindex="0"
+          data-message-scroller
+        >
+          <ol class="flex flex-col gap-3 px-4 py-4" data-message-list></ol>
+        </section>
+        <div class="sr-only" role="log" aria-live="polite" data-announcer></div>
         <button
           type="button"
           class="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-4 py-2 font-board text-[11px] uppercase tracking-widest text-neutral-950 shadow-lg hover:bg-amber-300"

@@ -10,6 +10,7 @@ import {
   FAKE_CHANNEL_KEY,
   FAKE_IMAGE_STICKER_ID,
   FAKE_LOTTIE_STICKER_ID,
+  FAKE_PIXEL_PATH,
   FAKE_SECOND_CHANNEL_KEY,
   FAKE_UNKNOWN_CHANNEL_KEY,
   fakeChannelClosePath,
@@ -28,8 +29,6 @@ const REVOCATION_NOTICE_TIMEOUT_MS = 15_000;
 const MENTIONED_USER_ID = '867465548148768840';
 const MENTIONED_CHANNEL_ID = '1551732426290626634';
 const CUSTOM_EMOJI_ID = '1552081214045822976';
-const TRANSPARENT_PIXEL_URL =
-  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const RICH_MESSAGE = [
   'And just to be on the safe side, one more, this time ~~longer~~.',
   '`And` __maybe__ with some **rich** *formatting*? ||secret||',
@@ -185,7 +184,7 @@ test('renders image and animated stickers', async ({ page, request }) => {
           id: FAKE_IMAGE_STICKER_ID,
           name: 'waving',
           kind: StickerKind.Image,
-          url: TRANSPARENT_PIXEL_URL,
+          url: FAKE_PIXEL_PATH,
         },
         { id: FAKE_LOTTIE_STICKER_ID, name: 'dancing', kind: StickerKind.Lottie },
       ],
@@ -212,7 +211,7 @@ test('renders image and animated stickers', async ({ page, request }) => {
   await expect(animated).not.toBeInViewport();
   await expect(animated).toHaveAttribute('data-sticker-state', STICKER_PAUSED);
 
-  await page.locator('[data-message-list]').evaluate((element) => {
+  await page.locator('[data-message-scroller]').evaluate((element) => {
     element.scrollTop = 0;
   });
   await expect(animated).toBeInViewport();
@@ -300,8 +299,8 @@ test('announces arrivals waiting below the fold', async ({ page, request }) => {
   const pill = page.locator('[data-approaching]');
   await expect(pill).toBeHidden();
 
-  const list = page.locator('[data-message-list]');
-  await list.evaluate((element) => {
+  const scroller = page.locator('[data-message-scroller]');
+  await scroller.evaluate((element) => {
     element.scrollTop = 0;
   });
   const approachingId = `${firstId + MESSAGES_TO_OVERFLOW_VIEWPORT}`;
@@ -321,4 +320,44 @@ test('announces arrivals waiting below the fold', async ({ page, request }) => {
   await pill.click();
   await expect(pill).toBeHidden();
   await expect(messageArticle(page, approachingId)).toBeInViewport();
+});
+
+test('announces each arrival once to screen readers', async ({ page, request }) => {
+  const earlierId = `${Date.now()}`;
+  await emit(request, FAKE_CHANNEL_KEY, {
+    name: StreamEventName.MessageCreated,
+    payload: buildMessage({ id: earlierId, content: 'already on the board' }),
+  });
+  await page.goto(channelPagePath(FAKE_CHANNEL_KEY));
+  await expectOnTime(page);
+  await expect(page.getByRole('region', { name: 'Messages' }).getByRole('list')).toBeVisible();
+  await expect(messageArticle(page, earlierId)).toBeVisible();
+  const announcements = page.locator('[data-announcer] p');
+  await expect(announcements).toHaveCount(0);
+
+  const messageId = `${Date.now() + 1}`;
+  await emit(request, FAKE_CHANNEL_KEY, {
+    name: StreamEventName.MessageCreated,
+    payload: buildMessage({
+      id: messageId,
+      content: `hi <@${MENTIONED_USER_ID}> ||the ending||`,
+      mentions: { users: { [MENTIONED_USER_ID]: 'klimeryk' }, roles: {}, channels: {} },
+    }),
+  });
+  await expect(announcements).toHaveText(['Ada: hi @klimeryk spoiler']);
+
+  const spoiler = messageArticle(page, messageId).locator('[data-spoiler]');
+  await spoiler.click();
+  await emit(request, FAKE_CHANNEL_KEY, {
+    name: StreamEventName.MessageUpdated,
+    payload: buildMessage({
+      id: messageId,
+      content: `hi <@${MENTIONED_USER_ID}> ||the ending||`,
+      mentions: { users: { [MENTIONED_USER_ID]: 'klimeryk' }, roles: {}, channels: {} },
+      editedAt: new Date().toISOString(),
+    }),
+  });
+  await expect(messageArticle(page, messageId).locator('[data-edited]')).toBeVisible();
+  await expect(spoiler).toHaveAttribute('data-spoiler', 'revealed');
+  await expect(announcements).toHaveCount(1);
 });

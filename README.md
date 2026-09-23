@@ -81,6 +81,22 @@ npm run build
 PUBLIC_URL=https://mirror.example.com npm start
 ```
 
+### Deploying on Railway
+
+`railway.json` sets the build command, the start command and the `/api/health` healthcheck. Then:
+
+1. **Attach a volume** (for example at `/data`) and set `STATE_FILE=/data/bot-state.json`. Without
+   a volume the state file lives on the container's ephemeral disk, so every deploy forgets every
+   mirrored channel and every link stops working.
+2. Set `HOST=0.0.0.0`. The default `127.0.0.1` is unreachable from Railway's proxy and fails the
+   healthcheck. `PORT` is injected by Railway.
+3. Set `DISCORD_TOKEN`, and set `PUBLIC_URL` to the service's public domain (for example
+   `https://pantograph-production.up.railway.app`).
+4. Keep a single replica. Two instances would open two Gateway sessions and serve two disjoint sets
+   of viewers (see *Scaling notes*). During a deploy the old and new containers overlap for a few
+   seconds. That is harmless: the old one receives `SIGTERM` and viewers reconnect to the new one
+   and get a fresh snapshot.
+
 ## The web page
 
 The channel page is styled as a station departure board, a nod to the railway theme. Messages
@@ -97,6 +113,10 @@ chrome around them is themed.
   instead of moving the page; click it to jump to the latest.
 - **Announcements**: an opt-in station chime for new messages, off by default and remembered per
   browser. Everything animated respects the system "reduce motion" setting.
+- **Screen readers**: each new message is announced once as "author: text" through a dedicated
+  live region. Spoilers are read as "spoiler", and loading the page or reconnecting announces
+  nothing. Edits update the message in place without re-announcing it. The message list is a
+  keyboard-focusable "Messages" region.
 
 ## Links and who can see what
 
@@ -110,12 +130,19 @@ chrome around them is themed.
   board flip to `CANCELLED` and "This service has been cancelled".
 - Deleting a mirrored channel, or removing the bot from a server, disables the affected links
   automatically.
-- Nothing about the links is exposed by `/api/health` or the logs.
+- Nothing about the links is exposed by `/api/health` or the logs. Like any secret in a URL, a
+  link does end up in browser history, bookmarks and the access logs of any proxy in front of the
+  server. `/pantograph rotate` is the remedy if a link leaks.
+- Pages are served with a strict Content Security Policy (scripts, styles and connections only from
+  the page's own origin, images also from Discord's CDN), `Referrer-Policy: no-referrer` and the
+  usual hardening headers.
 
 ## Slash commands
 
 All commands are limited to members with **Manage Server**, apply to the server they are run in,
-and reply only to you (ephemeral).
+and reply only to you (ephemeral). The permission is Discord's default for the command and is also
+checked again by the bot, so loosening the command's permissions under Server Settings →
+Integrations does not hand out links.
 
 | Command                             | What it does                                                                        |
 | ----------------------------------- | ----------------------------------------------------------------------------------- |
@@ -164,7 +191,8 @@ e2e/       Playwright tests and the fake two-channel backend they drive
 ```
 
 HTTP surface: `GET /api/channels/<key>` (channel name and paused flag, `404` for unknown keys),
-`GET /api/channels/<key>/stream` (SSE), `GET /api/health`. The page checks the first endpoint
+`GET /api/channels/<key>/stream` (SSE), `GET /api/stickers/<id>` (cached proxy for Lottie sticker
+animations, which Discord's CDN serves without CORS headers), `GET /api/health`. The page checks the first endpoint
 before opening the stream and again whenever the stream closes, which is how it detects a
 revoked link.
 
@@ -203,8 +231,59 @@ Backend code must stay within Node's type-stripping subset: no `enum`, no parame
 | Startup says the state file is from an earlier version         | Delete it and run `/pantograph watch` again                                           |
 | Attachments stop loading after a day                           | Discord attachment URLs are signed and expire; the live window is short enough that this rarely matters |
 
-## Not in this iteration
+## Known limitations and future work
 
+This is a portfolio project, so these are recorded rather than fixed. Each entry says roughly what
+it would take.
+
+### Behaviour
+
+- **Edits to old messages can be missed.** An edit to a message that discord.js no longer caches
+  arrives as a partial update and is dropped, although the browser may still show that message.
+  The fix is `await message.fetch()` for partial updates, at the cost of one REST call each.
+- **Channel renames** show up only after the next re-sync (no `ChannelUpdate` handler).
+- **Concurrent `/pantograph watch`** of the same channel by two moderators can issue two keys, and
+  the second one wins.
+- **Viewer cap is global.** One very popular channel can hit the 5000-viewer limit for every
+  channel. Per-channel and per-IP caps would be the next step. There is no rate limiting at all.
+- **Scrollback shrinks after a deploy.** A fresh snapshot replaces the browser's up-to-500 messages
+  with the server's 50. Merging instead would keep scrollback, but would miss deletions of older
+  messages that happened during the outage.
+- **`/api/health` is public** and reveals channel and viewer counts. That is fine for a healthcheck
+  and would be worth splitting for a real product.
+- Unknown `/api/...` paths fall through to the web page and return `index.html` with status 200.
+- Replies are sent to the browser as `replyToMessageId` but not rendered. Markdown lists are not
+  parsed, and embeds are not shown.
 - Threads and forum posts under a mirrored channel are not mirrored.
-- Message text is shown as plain text with mentions resolved; Discord markdown, embeds and
-  reactions are left for the rendering revamp.
+- The e2e suite runs in Chromium only and does not yet cover reconnect-and-replay.
+
+### Why the frontend has no UI framework
+
+The page is vanilla TypeScript: a store emits one change per stream event and a renderer applies
+it to the DOM. Edits patch the existing row in place, so focus, revealed spoilers and running
+sticker animations survive. The main bundle is 18 KB gzipped. The alternatives were weighed as
+follows.
+
+| Option | For | Against |
+| --- | --- | --- |
+| Vanilla (chosen) | No runtime, every DOM effect is explicit, the imperative parts (split-flap, Lottie, WebAudio, departure animations) need no wrappers | Each new piece of per-message state needs its own patch path |
+| Solid | Fine-grained updates and keyed lists keep DOM nodes stable, which suits the diff-emitting store | New toolchain for a single list; the imperative parts stay imperative |
+| Preact | React's model at about 4 KB | Re-renders the list per event unless memoised; exit animations need extra lifecycle work |
+| React | Familiar to everyone | About 45 KB, exit animations need a library, StrictMode's double effects fight the Lottie player |
+
+Richer rows (reactions, reply previews, embeds, grouping consecutive messages by author) are the
+point where Solid would start to pay for itself.
+
+### Feature ideas
+
+| Feature | Effort | What it takes |
+| --- | --- | --- |
+| Browser notifications while the tab is in the background | Small | Ask for permission on the announcements toggle, then show a `Notification` for arrivals while `document.hidden`, reusing the screen-reader text. Notifications with the tab closed need a service worker, Web Push and a subscription store: large. |
+| Emoji reactions | Medium | Non-privileged `GuildMessageReactions` intent, reaction add/remove events, `reactions` in `MessageView`, a chip row patched in place. |
+| Reply previews | Small to medium | Resolve the referenced message on the backend and send the author and an excerpt. |
+| Embeds and link previews | Medium | Discord adds embeds through a later edit, so this depends on fixing missed partial edits first. |
+| Load older messages | Medium | A paginated history endpoint backed by `messages.fetch({ before })`, plus keeping the scroll position when prepending. |
+| Typing indicator | Small to medium | `GuildMessageTyping` intent and a transient event that bypasses the replay log. |
+| Viewer count on the page | Small | Add the subscriber count to `sync.state`, throttled. |
+| Persistent history (Railway Postgres) | Medium to large | History survives restarts and enables pagination and search. |
+| Horizontal scale | Large | Publish hub events to Redis or NATS and run stateless SSE relays (see *Scaling notes*). |

@@ -85,6 +85,11 @@ export class DiscordMessageSource {
       return resolution;
     }
     this.#incidents.resolve(IncidentKind.ChannelInaccessible, scope);
+    if (this.#channels.byChannelId(channelId)?.record.paused === true) {
+      this.#channels.setChannelName(channelId, resolution.channel.name);
+      this.publishSyncState(channelId);
+      return resolution;
+    }
     return this.#loadHistory(watched.hub, resolution.channel, scope);
   }
 

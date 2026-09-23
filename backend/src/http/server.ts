@@ -12,10 +12,12 @@ import {
   type UnknownChannelResponse,
 } from '@pantograph/shared';
 import { type Context, Hono } from 'hono';
+import { secureHeaders } from 'hono/secure-headers';
 import { streamSSE } from 'hono/streaming';
 import type { Logger } from '../logging.ts';
 import type { MessageStreamHub } from '../stream/messageStreamHub.ts';
 import { SseClient } from './sseClient.ts';
+import { StickerJsonCache } from './stickerJsonCache.ts';
 
 const MAX_STREAM_CLIENTS = 5000;
 const OVER_CAPACITY_RETRY_AFTER_SECONDS = 15;
@@ -32,12 +34,24 @@ const CHANNEL_STREAM_ROUTE = channelStreamPath(`:${KEY_ROUTE_PARAMETER}`);
 const STICKER_LOTTIE_ROUTE = stickerLottiePath(`:${STICKER_ROUTE_PARAMETER}`);
 const UNKNOWN_CHANNEL_RESPONSE: UnknownChannelResponse = { error: 'unknown-channel' };
 
-const STICKER_FETCH_TIMEOUT_MS = 5000;
-const MAX_STICKER_JSON_BYTES = 2_000_000;
-const MAX_CACHED_STICKERS = 100;
 const STICKER_CACHE_MAX_AGE_SECONDS = 86_400;
 const JSON_CONTENT_TYPE = 'application/json';
 const STICKER_UNAVAILABLE_MESSAGE = 'Sticker is unavailable.';
+
+const SELF_SOURCE = "'self'";
+const NO_SOURCE = "'none'";
+const DISCORD_IMAGE_SOURCES = ['https://cdn.discordapp.com', 'https://media.discordapp.net'];
+const CONTENT_SECURITY_POLICY = {
+  defaultSrc: [SELF_SOURCE],
+  imgSrc: [SELF_SOURCE, ...DISCORD_IMAGE_SOURCES],
+  connectSrc: [SELF_SOURCE],
+  styleSrc: [SELF_SOURCE],
+  scriptSrc: [SELF_SOURCE],
+  objectSrc: [NO_SOURCE],
+  baseUri: [NO_SOURCE],
+  formAction: [NO_SOURCE],
+  frameAncestors: [NO_SOURCE],
+};
 
 export type ChannelStreamTarget = {
   hub: MessageStreamHub;
@@ -62,7 +76,8 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
     logger,
   } = dependencies;
   const app = new Hono();
-  const stickerJsonById = new Map<string, string>();
+  const stickerJsonCache = new StickerJsonCache(stickerJsonBaseUrl);
+  app.use(secureHeaders({ contentSecurityPolicy: CONTENT_SECURITY_POLICY }));
 
   const resolveFromRequest = (context: Context): ChannelStreamTarget | null => {
     const key = context.req.param(KEY_ROUTE_PARAMETER) ?? '';
@@ -116,22 +131,11 @@ export function createHttpApp(dependencies: HttpAppDependencies): Hono {
     if (!isStickerId(stickerId)) {
       return context.text(STICKER_UNAVAILABLE_MESSAGE, NOT_FOUND_STATUS);
     }
-    const cached = stickerJsonById.get(stickerId);
-    if (cached !== undefined) {
-      return stickerJsonResponse(context, cached);
-    }
-    const animation = await fetchStickerJson(stickerJsonBaseUrl, stickerId);
+    const animation = await stickerJsonCache.get(stickerId);
     if (animation === null) {
-      logger.warn({ stickerId }, 'Could not fetch sticker animation');
+      logger.warn({ stickerId }, 'Sticker animation is unavailable');
       return context.text(STICKER_UNAVAILABLE_MESSAGE, BAD_GATEWAY_STATUS);
     }
-    if (stickerJsonById.size >= MAX_CACHED_STICKERS) {
-      const oldestStickerId = stickerJsonById.keys().next().value;
-      if (oldestStickerId !== undefined) {
-        stickerJsonById.delete(oldestStickerId);
-      }
-    }
-    stickerJsonById.set(stickerId, animation);
     return stickerJsonResponse(context, animation);
   });
 
@@ -148,21 +152,6 @@ function stickerJsonResponse(context: Context, animation: string): Response {
   context.header('Content-Type', JSON_CONTENT_TYPE);
   context.header('Cache-Control', `public, max-age=${STICKER_CACHE_MAX_AGE_SECONDS}`);
   return context.body(animation, OK_STATUS);
-}
-
-async function fetchStickerJson(baseUrl: string, stickerId: string): Promise<string | null> {
-  try {
-    const response = await fetch(new URL(`${stickerId}.json`, baseUrl), {
-      signal: AbortSignal.timeout(STICKER_FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      return null;
-    }
-    const animation = await response.text();
-    return animation.length > MAX_STICKER_JSON_BYTES ? null : animation;
-  } catch {
-    return null;
-  }
 }
 
 export function startHttpServer(
