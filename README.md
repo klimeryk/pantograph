@@ -1,40 +1,37 @@
 # Pantograph
 
 ```text
- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                         ════╤════
-                            ╱ ╲
-                           ╱   ╲
-                           ╲   ╱
-                            ╲ ╱
-          ┌──────────────────┴──────────────────┐
-          │ ▣   ▣   ▣   ▣   ▣   ▣   ▣   ▣   ▣   │
-          └───◎──◎─────────────────────────◎──◎─┘
+ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    ════╤════
+                       ╱ ╲
+                       ╲ ╱
+          ┌─────────────┴───────────────┐
+          │ ▣   ▣   ▣   ▣   ▣   ▣   ▣   │
+          └───◎──◎─────────────────◎──◎─┘
 ```
 
-**Discord channels, live on the web.**
+**Publicly accessible dynamic mirror of your Discord channels.**
 
 A pantograph is the arm on top of an electric train that stays in contact with the overhead
 wire. This one keeps contact with Discord instead: a bot listens to the channels you pick and a
 small web server streams every new message, edit and deletion to anyone who has the link. No
 Discord account needed on the reading end.
 
-I built it as a portfolio project for [Railway](https://railway.com), hence the theme.
 
 ## What it does
 
-- **Real time.** New messages arrive within a second, edits update in place, deletions disappear.
+- **Real time.** New messages arrive within a second (match that, DB!), edits update in place, deletions disappear.
 - **One unlisted link per channel**, for as many channels and servers as you like.
-- **Looks like Discord.** Markdown, spoilers, mentions, timestamps, custom emoji, images and
+- **Looks like Discord.** Markdown, spoilers, mentions, timestamps, and _most imporantly_: obligatory support for custom emoji, images and
   stickers, animated ones included.
-- **Moderator controls.** Pause, rotate a leaked link or stop mirroring with one slash command.
-- **Reports its own problems**, as one self-updating message instead of a flood.
-- **Accessible.** Screen readers, keyboard, and "reduce motion" are all taken care of.
+- **~Conductor~ Moderator controls.** Pause, rotate a leaked link or stop mirroring with one slash... command.
+- **As great as communication as its author.** Reports issues to a separate, optional channel (plus, server logs!).
+- **Accessible.** Screen readers, keyboard, and "reduce motion" are all supported.
 
 ## The web page
 
 The channel page is a station departure board. The board is the station and the messages are the
-passengers. Only the chrome is themed; messages look like messages.
+passengers. Only the chrome is themed; messages look like messages, cause how can you express the awesomeness (and chaos) that are Discord messages otherwise?
 
 The header shows **TIME** (a live clock), **SERVICE** (the channel), **PLATFORM** (a number
 derived from the channel id: decorative, but stable) and **STATUS**, which tells you how the
@@ -51,16 +48,16 @@ connection is doing:
 A few more details:
 
 - The little pantograph in the corner is raised against the wire while the stream is live and
-  folds down when it isn't. It sparks on every new message.
+  folds down when it isn't. There's _totally_ nothing else it does...
 - Scrolled up to read something? New arrivals are counted in a "now approaching" pill at the
   bottom instead of yanking the page. Click it to jump to the latest.
 - There's an opt-in station chime for new messages. It's off by default and your browser
-  remembers the choice.
+  remembers the choice. If only you could mute some sounds on real train stations.
 - Screen readers get each new message once, as "author: text". Spoilers are read as "spoiler".
   Loading the page, reconnecting and edits announce nothing.
 
 The board font is [Departure Mono](https://departuremono.com)
-([SIL OFL 1.1](frontend/public/fonts/DepartureMono-LICENSE.txt)).
+([SIL OFL 1.1](frontend/public/fonts/DepartureMono-LICENSE.txt)). The license may or may not mandate its use for any railway-related project.
 
 ## Commands
 
@@ -70,28 +67,27 @@ only members with **Manage Server** can use it, and replies are visible only to 
 | Command                         | What it does                                                                                           |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `/pantograph watch #channel`    | Start mirroring a text or announcement channel and get its link. Loads the last 50 messages. Running it again gives you the same link |
-| `/pantograph status [#channel]` | Mirrored channels (up to 10) with their links, running or paused, viewers, buffered messages and last event. Also gateway ping and open problems |
+| `/pantograph status [#channel]` | Mirrored channels with their links, running or paused, viewers, buffered messages and last event. Also gateway ping and open problems |
 | `/pantograph pause [#channel]`  | Stop forwarding one channel, or every channel in the server. Viewers see `HELD AT SIGNAL`              |
 | `/pantograph resume [#channel]` | Re-sync recent history and carry on                                                                    |
 | `/pantograph rotate #channel`   | Issue a new link. The old one stops working immediately                                                |
 | `/pantograph unwatch #channel`  | Stop mirroring. The link stops working and viewers are disconnected                                    |
 | `/pantograph notify #channel`   | Where the bot should post problem reports for this server. Without it, problems only go to the logs     |
 
-Manage Server is Discord's default permission for the command, and server admins can loosen it
+*Manage Server* is Discord's default permission for the command, and server admins can loosen it
 under Server Settings → Integrations. The bot checks the permission again on its own, so loosening
 it doesn't hand out links.
 
-The bot's status sums up the state across all servers: "Watching #general",
-"Watching 3 channels (1 paused)", or "Watching nothing yet · /pantograph watch" on a fresh
-install. It goes idle when everything is paused.
+Each server only sees and controls its own channels. The bot's Discord status is shared by every
+server it is in, so it is a fixed "Watching the departure board" to avoid leaking any information.
 
 ## Links and privacy
 
-A channel link looks like `/c/k7fq-2x9p-lm3n-r8st`: about 80 bits of randomness, not guessable.
-Think of it as an unlisted video. Anyone who has it can read along without logging in, so share it
+A channel link looks like `/c/k7fq-2x9p-lm3n-r8st`: about 80 bits of randomness, not guessable (and if you can, then you probably deserve to see the channel, bravo!).
+Similar to a link to an unlisted video. Anyone who has it can read along without logging in, so share it
 deliberately.
 
-- The bot shows links only in replies that only you can see, never in a channel.
+- The bot shows links in messages that only you can see, never in a channel.
 - `rotate` replaces a link and `unwatch` kills it. Viewers on a dead link see the board flip to
   `CANCELLED`. Deleting the channel or removing the bot does the same.
 - Links stay out of `/api/health` and the logs, but like any URL they end up in browser history
@@ -119,6 +115,7 @@ fresh session instead, recent history is re-synced so nothing slips through.
   TypeScript directly, so older versions won't do.
 - npm 11, which ships with Node 24.
 - A Discord server where you have **Manage Server**.
+- Love for trains.
 
 ### 1. Create the Discord application
 
@@ -144,24 +141,16 @@ You don't need to build an invite link by hand. The bot logs one every time it s
 ### 2. Configure
 
 ```sh
-cp .env.example .env      # then paste DISCORD_TOKEN
+cp .env.example .env
+# fill out DISCORD_TOKEN in .env
 npm install
 ```
 
-[`.env.example`](.env.example) has everything, commented. The variables are read in
-[`backend/src/config.ts`](backend/src/config.ts):
-
-| Variable        | Default                       | What it's for                                                   |
-| --------------- | ----------------------------- | --------------------------------------------------------------- |
-| `DISCORD_TOKEN` | required                      | Bot token from the Developer Portal                             |
-| `PORT`          | `3000`                        | Web server port                                                 |
-| `HOST`          | `127.0.0.1`                   | Bind address. Use `0.0.0.0` behind a reverse proxy or on Railway |
-| `PUBLIC_URL`    | `http://localhost:5173` in dev, `http://localhost:$PORT` in production | Origin the channel links are built from. Set it to whatever address viewers use |
-| `STATE_FILE`    | `backend/data/bot-state.json` | Where mirrored channels, their links and paused flags are kept  |
-| `LOG_LEVEL`     | `info`                        | `debug`, `info`, `warn` or `error`                              |
+See [`.env.example`](.env.example) for description of every supported variable.
 
 ### 3. Run it
 
+For local development, use:
 ```sh
 npm run dev
 ```
@@ -194,7 +183,7 @@ healthcheck. What's left:
    healthcheck fails. Railway injects `PORT` itself.
 3. Set `DISCORD_TOKEN`, and set `PUBLIC_URL` to the service's public domain, for example
    `https://pantograph-production.up.railway.app`.
-4. Keep a single replica. Two instances would open two Gateway sessions and each would serve its
+4. Keep a single replica. Just like with Highlander, there can only be one. Two instances would open two Gateway sessions and each would serve its
    own half of the viewers.
 
 > [!WARNING]
@@ -274,79 +263,85 @@ erasable subset: no `enum`, no parameter properties, `.ts` extensions on relativ
 
 ### Scaling notes
 
-- **One process** handles a few thousand viewers on a small VM, at tens of kilobytes per SSE
+- **One process** should be able to handle a few thousand viewers on a small VM, at tens of kilobytes per SSE
   connection (raise `ulimit -n` past ~10k). Bandwidth is the real cost: every Discord event is a
   ~1 KB frame per viewer. Each channel keeps 50 messages and 500 events in memory, well under a
   megabyte.
 - **Already built in:** events are serialized once per channel, viewers more than 100 events
-  behind are dropped and reconnect, a 25-second heartbeat keeps proxies happy, and past 5,000
+  behind are dropped and reconnect, a 25-second heartbeat keeps proxies happy (if they can ever be happy), and past 5,000
   viewers the server answers `503` with `Retry-After`.
 - **Going horizontal:** the Gateway connection must stay in one process, since a second one would
-  duplicate every event. Publish hub events to Redis or NATS and run stateless SSE relays behind a
+  duplicate every event. Publish hub events to, for example, Redis and run stateless SSE relays behind a
   load balancer. For huge, latency-tolerant audiences, push a JSON snapshot per channel to a CDN and
   let browsers poll it.
 
-### Why SSE, and why no framework
+### Implementation details and decisions
 
-SSE rather than WebSockets: the data only flows one way, `EventSource` reconnects and replays for
-free, and it's plain HTTP, so it gets along with every proxy and with HTTP/2 multiplexing.
+#### SSE rather than WebSockets
 
-The frontend is vanilla TypeScript. A store emits one change per stream event and a renderer
-applies it to the DOM, patching rows in place so focus, revealed spoilers and running sticker
-animations survive an edit. The main bundle is 18 KB gzipped.
+The data only flows one way, `EventSource` reconnects and replays for
+free, and it's plain HTTP, so it gets along with every proxy and with HTTP/2 multiplexing. Perfect use case for SSE.
 
-<details>
-<summary>The alternatives I considered</summary>
+#### Vanilla TypeScript.
+A store emits one change per stream event and a renderer applies it to the DOM, patching rows in place so focus, revealed spoilers and running sticker
+animations survive an edit.
 
-| Option           | For                                                                                        | Against                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| Vanilla (chosen) | No runtime. Every DOM effect is explicit, and the imperative bits (split-flap, Lottie, WebAudio, departure animations) need no wrappers | Each new piece of per-message state needs its own patch path |
-| Solid            | Fine-grained updates and keyed lists keep DOM nodes stable, which suits a diff-emitting store | New toolchain for a single list. The imperative bits stay imperative            |
-| Preact           | React's model in about 4 KB                                                                 | Re-renders the list per event unless memoised. Exit animations need extra lifecycle work |
-| React            | Everyone knows it                                                                           | About 45 KB, exit animations need a library, and StrictMode's double effects fight the Lottie player |
+I initially went with vanilla approach because reactive frameworks seemed overkill... and I underestimated how much I'd end over-engineering this... But still, it's manageable. React would not be a good fit, since we're mostly dealing with reacting to external signals, controlling animations, etc. Things that React can do, but not without... persuasion. But depending on the long-term plans for this (is it going to be a part of a broader codebase/product?), what is the team familiar with, etc. it could be easily migrated to a framework that could help, for example, when we continue iterating the frontend to support more features (emoji reactions!).
 
-Richer rows (reactions, reply previews, embeds, grouping consecutive messages by author) are where
-Solid would start paying for itself.
+#### E2E tests only
+Depending on the long-terms plans for it, we could extend the test harness, but for now I went with simple-ish e2e ones to ensure no obvious breakage and quickly test, well, end to end.
 
-</details>
+#### Safe (but potentially limited) Discord Markdown parsing
+Using [discord-markdown-parser](https://github.com/ItzDerock/discord-markdown-parser) to parse the Discord-flavored Markdown into an AST tree to safely then render it on the frontend. The library itself is not _super_ well-maintained, plus we don't support all the possible craziness that Discord users can submit (see below, like embeds). But most things are supported, especially with the use case I had in mind (public "announcement"-like page).
+
+
 
 ## Mind the gap: known limitations and future work
 
-This is a portfolio project, so I've written these down rather than fixed them. Each one comes
-with a rough idea of what the fix would take.
+No project is perfect and these are some of the edge cases and quirks that you might run into, but I had to stop somewhere.
 
 - **Edits to old messages can be missed.** When discord.js no longer has a message cached, an edit
   arrives as a partial update and gets dropped, even if the browser still shows that message.
-  Calling `await message.fetch()` on partial updates would fix it, at one REST call each.
+  Calling `await message.fetch()` on partial updates would fix it, at one REST call each. To keep
+  the cost down, fetch only for channels that currently have viewers.
 - **Channel renames** only show up after the next re-sync, because nothing handles `ChannelUpdate`.
+  Handle that event and push a `sync.state` with the new name to the channel's viewers.
 - **Two moderators running `/pantograph watch`** on the same channel at the same moment can end up
-  with two keys. The second one wins.
+  with two keys. The second one wins (and should buy a lottery ticket). Serializing `watch` per
+  channel would let the second call find the first key and hand it back.
 - **The viewer cap is global.** One very popular channel can use up all 5,000 slots for everyone.
-  Per-channel and per-IP caps would be next. There's no rate limiting at all.
+  Per-channel and per-IP caps would be next. There's no rate limiting at all (you would not abuse this, would you?).
+  Count connections per channel and per client IP (from `X-Forwarded-For` behind Railway's proxy)
+  next to the global counter, and put a rate-limiting middleware in front of `/api`.
 - **Scrollback shrinks after a deploy.** The browser keeps up to 500 messages, but a fresh snapshot
   replaces them with the server's 50. Merging would keep the scrollback but miss older messages
-  that were deleted during the outage.
-- **`/api/health` is public** and reveals channel and viewer counts. Fine for a healthcheck. A real
-  product would split it.
-- Unknown `/api/...` paths fall through to the web page and return `index.html` with a 200.
-- Replies aren't rendered (the reference is on the wire as `replyToMessageId`), Markdown lists
-  aren't parsed and embeds aren't shown.
-- Threads and forum posts under a mirrored channel aren't mirrored.
-- The e2e suite runs in Chromium only and doesn't cover reconnect-and-replay yet.
+  that were deleted during the outage. Keeping the older local messages is easy. Pruning the
+  deleted ones needs the server to remember deletions, which means persistent history.
+- **`/api/health` is public** and reveals channel and viewer counts. Fine for a healthcheck. 
+  We could split it: a bare `ok` for the platform, and the counts behind a token on a
+  separate endpoint.
+- Unknown `/api/...` paths fall through to the web page and return `index.html` with a 200. An
+  `/api/*` catch-all returning a JSON 404 before the SPA fallback would fix it.
+- Replies aren't rendered (the reference _is_ available as `replyToMessageId`), Markdown lists
+  aren't parsed and embeds aren't shown. Replies need the referenced message resolved on the
+  backend, lists an extra parser rule, and embeds the partial-edit fix above plus an `embeds`
+  field in `MessageView`.
+- Threads and forum posts under a mirrored channel aren't mirrored. Listening for thread events
+  and giving each thread its own hub (and link, or a spot on the parent's page) would cover it.
+- The e2e suite runs in Chromium only and doesn't cover reconnect-and-replay yet. It's more of a
+  basic safety net to ensure the code works end to end, than cover all cases.
 
-<details>
-<summary>Feature ideas, with rough effort</summary>
+This is not the final stop for this project, there's many more stations it could go to:
 
 | Feature | Effort | What it takes |
 | --- | --- | --- |
-| Browser notifications while the tab is in the background | Small | Ask for permission on the announcements toggle, then show a `Notification` for arrivals while `document.hidden`, reusing the screen-reader text. With the tab closed it's a different story: service worker, Web Push and a subscription store, so large. |
-| Emoji reactions | Medium | The non-privileged `GuildMessageReactions` intent, reaction add/remove events, `reactions` in `MessageView` and a chip row patched in place. |
+| Emoji reactions | Medium | The non-privileged `GuildMessageReactions` intent, reaction add/remove events, `reactions` in `MessageView` and a chip row patched in place. Normally emojis are _super important_, but depending on the use case (an "announcement" page), it might be a "feature" to strip them when showing the messages publicly. Or can be a configuration flag. |
+| Browser notifications while the tab is in the background | Small | Ask for permission on the announcements (currently sound only) toggle, then show a `Notification` for arrivals while `document.hidden`, reusing the screen-reader text. With the tab closed it's a different story: service worker, Web Push and a subscription store, so more effort. |
 | Reply previews | Small to medium | Resolve the referenced message on the backend and send its author and an excerpt. |
 | Embeds and link previews | Medium | Discord adds embeds through a later edit, so this needs the missed-partial-edits fix first. |
 | Load older messages | Medium | A paginated history endpoint backed by `messages.fetch({ before })`, plus keeping the scroll position when prepending. |
-| Typing indicator | Small to medium | The `GuildMessageTyping` intent and a transient event that skips the replay log. |
+| Typing indicator | Small to medium | Choo, choo, a new message is (probably) arriving! The `GuildMessageTyping` intent and a transient event that skips the replay log. |
 | Viewer count on the page | Small | Add the subscriber count to `sync.state`, throttled. |
 | Persistent history (Railway Postgres) | Medium to large | History survives restarts, and pagination and search become possible. |
-| Horizontal scale | Large | Publish hub events to Redis or NATS and run stateless SSE relays (see [Scaling notes](#scaling-notes)). |
+| Horizontal scale | Large | Publish hub events to Redis and run stateless SSE relays (see [Scaling notes](#scaling-notes)). |
 
-</details>
