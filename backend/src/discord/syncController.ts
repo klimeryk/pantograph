@@ -4,7 +4,6 @@ import type { WatchedChannel, WatchedChannels } from '../channels/watchedChannel
 import type { BotStateStore, WatchedChannelRecord } from '../state/botState.ts';
 import type { DiscordMessageSource } from './discordMessageSource.ts';
 import type { IncidentTracker } from './incidentTracker.ts';
-import { applyPresence } from './presence.ts';
 import { resolveWatchableChannel } from './watchedChannel.ts';
 
 export type SyncControllerDependencies = {
@@ -54,11 +53,13 @@ export class SyncController {
 
   async initialize(): Promise<void> {
     await this.#source.syncAll();
-    this.#refreshPresence();
   }
 
   async watch(guildId: string, channelId: string): Promise<WatchResult> {
     const existing = this.#channels.byChannelId(channelId);
+    if (existing !== null && existing.record.guildId !== guildId) {
+      return { ok: false, reason: NOT_WATCHED_REASON };
+    }
     if (existing !== null) {
       return {
         ok: true,
@@ -73,7 +74,6 @@ export class SyncController {
     }
     const watched = await this.#channels.add({ channelId, guildId });
     const synced = await this.#source.syncChannel(channelId);
-    this.#refreshPresence();
     return {
       ok: true,
       link: this.linkFor(watched.record),
@@ -82,13 +82,12 @@ export class SyncController {
     };
   }
 
-  async unwatch(channelId: string): Promise<boolean> {
-    if (this.#channels.byChannelId(channelId) === null) {
+  async unwatch(guildId: string, channelId: string): Promise<boolean> {
+    if (this.#watchedInGuild(guildId, channelId) === null) {
       return false;
     }
     await this.#channels.remove(channelId);
     this.#incidents.resolveAllForChannel(channelId);
-    this.#refreshPresence();
     return true;
   }
 
@@ -97,11 +96,10 @@ export class SyncController {
       this.#incidents.resolveAllForChannel(watched.record.channelId);
     }
     await this.#channels.removeGuild(guildId);
-    this.#refreshPresence();
   }
 
-  async rotate(channelId: string): Promise<LinkResult> {
-    if (this.#channels.byChannelId(channelId) === null) {
+  async rotate(guildId: string, channelId: string): Promise<LinkResult> {
+    if (this.#watchedInGuild(guildId, channelId) === null) {
       return { ok: false, reason: NOT_WATCHED_REASON };
     }
     const rotated = await this.#channels.rotateKey(channelId);
@@ -117,7 +115,6 @@ export class SyncController {
       await this.#channels.setPaused(watched.record.channelId, true);
       this.#source.publishSyncState(watched.record.channelId);
     }
-    this.#refreshPresence();
     return { ok: true, channelIds: targets.channels.map(idOf), problems: [] };
   }
 
@@ -134,7 +131,6 @@ export class SyncController {
         problems.push({ channelId: watched.record.channelId, reason: synced.reason });
       }
     }
-    this.#refreshPresence();
     return { ok: true, channelIds: targets.channels.map(idOf), problems };
   }
 
@@ -147,7 +143,7 @@ export class SyncController {
     channelId: string | null,
   ): { ok: true; channels: WatchedChannel[] } | { ok: false; reason: string } {
     if (channelId !== null) {
-      const watched = this.#channels.byChannelId(channelId);
+      const watched = this.#watchedInGuild(guildId, channelId);
       return watched === null
         ? { ok: false, reason: NOT_WATCHED_REASON }
         : { ok: true, channels: [watched] };
@@ -158,13 +154,9 @@ export class SyncController {
       : { ok: true, channels };
   }
 
-  #refreshPresence(): void {
-    const all = this.#channels.all();
-    applyPresence(this.#client, {
-      watchedCount: all.length,
-      pausedCount: all.filter((watched) => watched.record.paused).length,
-      singleChannelName: all.length === 1 ? (all[0]?.channelName ?? null) : null,
-    });
+  #watchedInGuild(guildId: string, channelId: string): WatchedChannel | null {
+    const watched = this.#channels.byChannelId(channelId);
+    return watched !== null && watched.record.guildId === guildId ? watched : null;
   }
 }
 

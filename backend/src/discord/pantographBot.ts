@@ -136,11 +136,12 @@ export function attachPantographBot(dependencies: PantographBotDependencies): Pa
   });
 
   client.on(Events.ChannelDelete, (channel) => {
-    if (channels.byChannelId(channel.id) === null) {
+    const watched = channels.byChannelId(channel.id);
+    if (watched === null) {
       return;
     }
     logger.info({ channelId: channel.id }, 'Mirrored channel was deleted, stopping its mirror');
-    void controller?.unwatch(channel.id);
+    void controller?.unwatch(watched.record.guildId, channel.id);
   });
 
   client.on(Events.InteractionCreate, (interaction) => {

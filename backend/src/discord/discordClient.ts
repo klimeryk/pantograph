@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { PANTOGRAPH_PRESENCE } from './presence.ts';
 
 export function createDiscordClient(): Client {
   return new Client({
@@ -8,5 +9,6 @@ export function createDiscordClient(): Client {
       GatewayIntentBits.MessageContent,
     ],
     partials: [Partials.Message],
+    presence: PANTOGRAPH_PRESENCE,
   });
 }

@@ -191,7 +191,7 @@ async function dispatchSubcommand(
     }
     case Subcommand.Unwatch: {
       const channel = interaction.options.getChannel(CHANNEL_OPTION, true, WATCHABLE_CHANNEL_TYPES);
-      const removed = await controller.unwatch(channel.id);
+      const removed = await controller.unwatch(guildId, channel.id);
       await respond(
         interaction,
         removed
@@ -230,7 +230,7 @@ async function dispatchSubcommand(
     }
     case Subcommand.Rotate: {
       const channel = interaction.options.getChannel(CHANNEL_OPTION, true, WATCHABLE_CHANNEL_TYPES);
-      const result = await controller.rotate(channel.id);
+      const result = await controller.rotate(guildId, channel.id);
       await respond(
         interaction,
         result.ok
