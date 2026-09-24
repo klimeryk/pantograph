@@ -273,6 +273,16 @@ erasable subset: no `enum`, no parameter properties, `.ts` extensions on relativ
 
 ### Implementation details and decisions
 
+#### TypeScript everywhere
+
+One language for the bot, the server, the browser and the tests. The shared protocol lives in
+[`shared/src/protocol.ts`](shared/src/protocol.ts) and both sides compile against it, so a renamed
+field breaks the build instead of a viewer's page. [discord.js](https://discord.js.org) is also
+the most complete and actively maintained Discord library, and Node 24 runs the TypeScript
+directly, so the backend has no build step at all.
+
+Switching to a different language, like golang, would not yield significant performance improvements. As per [Scaling notes](#scaling-notes), we're not CPU bound, but more bandwidth and by file descriptors. So TS seemed like the best DevEx experience here, while also well-suited for the SSE approach. And it should be well-known among the developers, making it easier to adopt and get PRs in.
+
 #### SSE rather than WebSockets
 
 The data only flows one way, `EventSource` reconnects and replays for
