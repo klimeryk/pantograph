@@ -171,28 +171,23 @@ For production, a single server builds the page and serves it too:
 
 ```sh
 npm run build
-PUBLIC_URL=https://mirror.example.com npm start
+PUBLIC_URL=https://example.com npm start
 ```
 
 ### Deploying on Railway
 
-[`railway.json`](railway.json) already sets the build and start commands and the `/api/health`
-healthcheck. What's left:
+The whole deployment is described as
+[Infrastructure as Code](https://docs.railway.com/infrastructure-as-code) in
+[`.railway/railway.ts`](.railway/railway.ts). It defines a single service that builds the frontend
+and serves it using recommended settings.
 
-1. **Attach a volume** (say at `/data`) and set `STATE_FILE=/data/bot-state.json`.
-2. Set `HOST=0.0.0.0`. The default `127.0.0.1` can't be reached from Railway's proxy, so the
-   healthcheck fails. Railway injects `PORT` itself.
-3. Set `DISCORD_TOKEN`, and set `PUBLIC_URL` to the service's public domain, for example
-   `https://pantograph-production.up.railway.app`.
-4. Keep a single replica. Just like with Highlander, there can only be one. Two instances would open two Gateway sessions and each would serve its
-   own half of the viewers.
+Use the [Railway CLI](https://docs.railway.com/cli) to set up the project. TL;DR: `railway login`, `railway link`, `railway config plan`, `railway config apply`.
+
+Make sure to define `DISCORD_TOKEN` on the service. And generate a public domain for it (or bring your own).
 
 > [!WARNING]
 > Without a volume the state file lives on the container's ephemeral disk. Every deploy forgets
 > every mirrored channel and every link stops working.
-
-During a deploy the old and new containers overlap for a few seconds. That's harmless: the old one
-gets `SIGTERM`, and viewers reconnect to the new one and get a fresh snapshot.
 
 ## Signal failures (troubleshooting)
 

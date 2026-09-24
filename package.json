@@ -25,6 +25,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "concurrently": "^10.0.5",
+    "railway": "^3.11.0",
     "typescript": "7.0.2"
   }
 }

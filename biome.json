@@ -78,6 +78,16 @@
           }
         }
       }
+    },
+    {
+      "includes": [".railway/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noTemplateCurlyInString": "off"
+          }
+        }
+      }
     }
   ],
   "css": {
